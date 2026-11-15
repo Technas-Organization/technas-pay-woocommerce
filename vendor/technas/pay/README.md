@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.2
+composer require technas/pay:^0.3
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -146,6 +146,51 @@ Les chiffres viennent de l'API : ne les écrivez jamais en dur. L'avis `account.
 ## La règle de relance
 
 **Une référence = un essai.** `failed` n'est pas définitif : le client peut encore payer sur la même page pendant une heure. Ne relancez qu'après `payment.expired`, avec une nouvelle référence.
+
+**Le client change d'offre ou revient plus tard ?** Un essai non payé ne bloque jamais un nouvel essai : nouvelle offre, ou essai expiré, c'est un nouvel essai avec une nouvelle référence (`Status::retryReference($factureId, $n + 1)`, `$n` gardé en base). Réutiliser la référence d'un autre montant lève `reference_conflict`, celle d'un essai expiré `payment_expired` ; les routes toutes faites passent seules à l'essai suivant. Au retour du client, relisez le dernier essai avec `getPayment` avant de répondre. La facture n'est payée que sur l'avis `payment.completed`, jamais sur `returnUrl`. Si le client a payé deux pages, remboursez l'essai en trop avec `refund`.
+
+```php
+use TechnasPay\Status;
+use TechnasPay\Webhook\Event;
+use TechnasPay\Webhook\WebhookHandlers;
+
+// Clic sur « Payer » (première fois, nouvelle offre, ou retour plus tard).
+function payer(Facture $facture, int $montant): string
+{
+    global $pay;
+    if ($facture->dernier_payment_id !== null) {
+        $dernier = $pay->getPayment($facture->dernier_payment_id); // jamais seulement sa propre base
+        if ($dernier->status === 'completed') {
+            return '/facture/' . $facture->id . '/deja-payee';
+        }
+        if ($dernier->status !== 'expired' && $dernier->amount === $montant && $dernier->checkoutUrl !== null) {
+            return $dernier->checkoutUrl; // même offre, essai en cours : la même page
+        }
+        // pending ou failed d'une autre offre, ou expired : nouvel essai, jamais un refus.
+    }
+    $facture->tentative += 1; // n + 1, gardé en base
+    $payment = $pay->askForPayment([
+        'amount' => $montant,
+        'reference' => Status::retryReference($facture->id, $facture->tentative),
+        'customer' => ['email' => $facture->email, 'name' => $facture->nom],
+        'returnUrl' => 'https://votre-site.com/merci',
+    ]);
+    $facture->dernier_payment_id = $payment->id;
+    $facture->save();
+    return (string) $payment->checkoutUrl;
+}
+
+// Seul l'avis signé payment.completed marque la facture payée.
+$handlers = new WebhookHandlers(onCompleted: function (Event $e) use ($pay): void {
+    $facture = Facture::parReference($e->payment->reference);
+    if ($facture->paye_par !== null && $facture->paye_par !== $e->payment->id) {
+        $pay->refund($e->payment->id); // l'ancienne page payée aussi : on rend l'essai en trop
+        return;
+    }
+    $facture->paye_par = $e->payment->id; // n'activer qu'une fois
+    $facture->save();
+});
+```
 
 ## Développer
 

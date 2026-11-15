@@ -149,6 +149,45 @@ final class ClientTest extends TestCase
         $this->pay(new FakeTransport(), str_replace('tps_test_', 'tps_live_', self::SECRET))->simulateTestPayment('p', 'completed');
     }
 
+    public function testLeClientChangeDOffreApresUnEssaiExpire(): void
+    {
+        $id1 = ['id' => 'pay_1', 'reference' => 'F-1', 'amount' => 5000] + self::PAYMENT;
+        $t = new FakeTransport([
+            ['status' => 201, 'body' => $id1],
+            ['status' => 303, 'body' => []],
+            ['status' => 200, 'body' => ['status' => 'expired', 'checkout_url' => null] + $id1],
+            ['status' => 200, 'body' => ['status' => 'expired', 'checkout_url' => null] + $id1],
+            ['status' => 201, 'body' => ['id' => 'pay_2', 'reference' => 'F-2', 'amount' => 7500] + self::PAYMENT],
+            ['status' => 409, 'body' => ['code' => 'reference_conflict', 'message' => 'm']],
+        ]);
+        $pay = $this->pay($t);
+        $ask = fn (string $ref, int $amount) => $pay->askForPayment(['amount' => $amount, 'reference' => $ref, 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci']);
+
+        self::assertSame('pay_1', $ask(Status::retryReference('F', 1), 5000)->id);
+        self::assertSame('expired', $pay->simulateTestPayment('pay_1', 'expired')->status);
+        self::assertSame('https://gw.test/test-checkout/pay_1/expired', $t->calls[1]['url']);
+        $relu = $pay->getPayment('pay_1');
+        self::assertSame(['GET', 'https://gw.test/v1/payments/pay_1'], [$t->calls[3]['method'], $t->calls[3]['url']]);
+        self::assertSame('expired', $relu->status);
+        self::assertTrue(Status::canRetry($relu->status));
+
+        $p2 = $ask(Status::retryReference('F', 2), 7500);
+        self::assertSame(['pay_2', 'F-2', 7500, 'pending'], [$p2->id, $p2->reference, $p2->amount, $p2->status]);
+
+        try {
+            $ask('F-1', 7500);
+            self::fail('la référence d\'un autre montant a été acceptée');
+        } catch (TechnasPayException $e) {
+            self::assertSame(['reference_conflict', 409, false], [$e->errorCode, $e->status, $e->retryable()]);
+        }
+
+        foreach ([[0, 'F-1', 5000], [4, 'F-2', 7500], [5, 'F-1', 7500]] as [$i, $ref, $amount]) {
+            self::assertSame('https://gw.test/v1/payments', $t->calls[$i]['url']);
+            self::assertSame([$ref, $amount], [$t->jsonBody($i)['reference'] ?? null, $t->jsonBody($i)['amount'] ?? null]);
+        }
+        self::assertSame([], $t->queue);
+    }
+
     public function testWebhooks(): void
     {
         $pay = $this->pay(new FakeTransport());

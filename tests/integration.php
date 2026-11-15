@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.2.1', '>='), 'M1 : le SDK embarqué est au moins 0.2.1 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.3.0', '>='), 'M1 : le SDK embarqué est au moins 0.3.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -240,6 +240,27 @@ tp_check((int) wc_get_order($id4)->get_meta('_technas_pay_attempt') === 3 && !wc
 [$b4f, $s4f] = tp_signed_event('payment.failed', tp_payment(['id' => 'pay_4', 'reference' => "wc-$id4-2", 'status' => 'failed', 'metadata' => tp_meta($o4)]));
 Technas_Pay_Webhook::handle($b4f, $s4f);
 tp_check(wc_get_order($id4)->get_status() === 'pending', 'refus : pas définitif, la commande n\'est pas annulée');
+
+// 7 bis. Le total a changé après un premier essai (le client a modifié sa commande) : la référence
+// du premier essai porte l'ancien montant, Technas répond reference_conflict, on passe à l'essai suivant.
+$o4c = tp_order();
+$id4c = $o4c->get_id();
+$fake->queue[] = [201, tp_payment(['id' => 'pay_4c1', 'reference' => "wc-$id4c-1", 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_4c1'])];
+$mm->process_payment($id4c);
+$o4c = wc_get_order($id4c);
+$o4c->set_total(7500);
+$o4c->save();
+$fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_4c2', 'reference' => "wc-$id4c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_4c2'])];
+$r4c = $mm->process_payment($id4c);
+$sent4c = array_map(fn ($c) => [$c['body']['reference'] ?? null, $c['body']['amount'] ?? null], array_slice($fake->calls, -2));
+tp_check($sent4c === [["wc-$id4c-1", 7500], ["wc-$id4c-2", 7500]], 'total changé : reference_conflict sur wc-{commande}-1, nouvel essai wc-{commande}-2 au nouveau montant', $sent4c);
+tp_check($r4c['result'] === 'success' && $r4c['redirect'] === 'https://pay-api.technas.fr/checkout/pay_4c2', 'total changé : le client part sur la page du nouvel essai, jamais un refus', $r4c);
+tp_check((int) wc_get_order($id4c)->get_meta('_technas_pay_attempt') === 2 && wc_get_order($id4c)->get_meta('_technas_pay_payment_id') === 'pay_4c2', 'total changé : le nouvel essai est gardé sur la commande');
+// Le client revient sur « Payer » sans rien changer : l'essai en cours est rendu (même référence).
+$fake->queue[] = [200, tp_payment(['id' => 'pay_4c2', 'reference' => "wc-$id4c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_4c2'])];
+$r4d = $mm->process_payment($id4c);
+tp_check(end($fake->calls)['body']['reference'] === "wc-$id4c-2" && $r4d['redirect'] === 'https://pay-api.technas.fr/checkout/pay_4c2', 'retour sur « Payer » : l\'essai en cours est rendu, même page', $r4d);
 
 // 8. F3 : une adresse de paiement inattendue n'est jamais suivie.
 $o5 = tp_order();

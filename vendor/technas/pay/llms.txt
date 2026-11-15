@@ -6,6 +6,8 @@ Agents de code : lisez d'abord AGENTS.md. WooCommerce : extension technas-pay-wo
 
 Une référence = un essai : `Status::retryReference($orderId, $attempt)`. Relancez avec une NOUVELLE référence seulement après payment.expired (`Status::canRetry`), jamais sur failed.
 
+Le client change d'offre ou revient plus tard : nouvel essai `Status::retryReference($factureId, $n + 1)`, jamais un refus ; au retour, `$pay->getPayment($dernierPaymentId)` d'abord ; payée seulement sur `payment.completed` ; deux pages payées : `refund` de l'essai en trop.
+
 Seuil d'identité : `$pay->getAccountKyc()` (à montrer au marchand), avis `account.kyc_required` (`onKycRequired`), erreur `kyc_required` à ne jamais réessayer (proposer la carte). Chiffres lus dans l'API, jamais en dur.
 
 Routes toutes faites pour une app Flutter : `$pay->appRoutes(authorize:, resolveOrder:)` + `SymfonyBridge::handle` (Laravel, Symfony) ou `Psr15Handler`.

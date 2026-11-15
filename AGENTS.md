@@ -13,7 +13,7 @@ Extension WordPress/WooCommerce. Un marchand l'installe SANS code. Si l'utilisat
 ## Si vous modifiez l'extension
 
 - **Une commande ne passe « payée » QUE dans `Technas_Pay_Webhook::on_completed`**, après la signature vérifiée et le montant comparé. Ne l'ajoutez jamais au retour du navigateur (`get_return_url`, `woocommerce_thankyou`).
-- **Une référence = un essai** : `{commande}-{essai}` (mobile money) et `{commande}-card-{essai}` (carte). Un essai expiré est sauté (`Technas_Pay_WC::start_payment`). Jamais de nouvel essai sur `failed`.
+- **Une référence = un essai** : `{commande}-{essai}` (mobile money) et `{commande}-card-{essai}` (carte). Un essai expiré (`payment_expired`) ou d'un autre montant (`reference_conflict` : le total a changé depuis le premier essai) est sauté (`Technas_Pay_WC::start_payment`) ; un essai en cours est rendu tel quel. Jamais de nouvel essai sur `failed`.
 - **Le secret** reste dans les réglages WooCommerce (champ mot de passe). Jamais dans une page, un script, un log, une URL.
 - **Seuil d'identité** : lu par `getAccountKyc()` dans `Technas_Pay_WC::account_kyc()` (transient `technas_pay_kyc`, une heure, clé `tps_live_` seulement), mis à jour par l'avis `account.kyc_required` sans appel réseau. Il se montre au MARCHAND (réglages, notice `manage_woocommerce`), jamais au client. Sur `kyc_required` au paiement : message neutre au client (`customer_message`), note de journal pour le marchand, jamais de nouvel essai. Les chiffres (seuil, délai) viennent de l'API : ne les écrivez jamais en dur.
 - Les chaînes sont en anglais, avec le domaine `technas-pay-woocommerce`. Toute chaîne neuve s'ajoute à `languages/*.po`, et le `.mo` se recompile (`msgfmt`).
