@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TechnasPay\Webhook;
 
+use TechnasPay\Internal\Data;
 use TechnasPay\Model\CardAccount;
 use TechnasPay\Model\Payment;
 use TechnasPay\Model\Refund;
@@ -29,15 +30,14 @@ final class Event
     ) {
     }
 
-    /** @param mixed $raw */
-    public static function parse($raw): self
+    public static function parse(mixed $raw): self
     {
         if (!is_array($raw) || !is_string($raw['id'] ?? null) || !is_string($raw['type'] ?? null) || !is_array($raw['data'] ?? null)) {
             throw new WebhookVerificationException('Webhook illisible');
         }
-        $d = $raw['data'];
+        $d = Data::asMap($raw['data']);
         $t = $raw['type'];
-        $base = [$raw['id'], $t, $raw['created_at'] ?? null, $d];
+        $base = [$raw['id'], $t, Data::nstr($raw, 'created_at'), $d];
         if (in_array($t, ['payment.completed', 'payment.failed', 'payment.expired'], true)) {
             if (!is_string($d['id'] ?? null)) {
                 throw new WebhookVerificationException('Webhook illisible');

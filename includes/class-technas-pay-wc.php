@@ -27,6 +27,14 @@ final class Technas_Pay_WC {
 	public const META_PAYMENT_ID = '_technas_pay_payment_id';
 	public const META_ATTEMPT    = '_technas_pay_attempt';
 	public const META_METHOD     = '_technas_pay_method';
+	/** Toutes les références et tous les paiements créés pour la commande (un avis n'agit que sur eux). */
+	public const META_REFERENCES  = '_technas_pay_references';
+	public const META_PAYMENT_IDS = '_technas_pay_payment_ids';
+	/** Le paiement qui a payé la commande (un second paiement est signalé, jamais ignoré). */
+	public const META_PAID_PAYMENT = '_technas_pay_paid_payment_id';
+
+	/** Hôtes autorisés pour la page de paiement (redirection du client). */
+	public const CHECKOUT_HOSTS = array( 'pay-api.technas.fr' );
 
 	/** Nombre maximal d'essais expirés sautés pour une commande. */
 	private const MAX_ATTEMPTS = 20;
@@ -38,7 +46,7 @@ final class Technas_Pay_WC {
 
 	/** Enregistre la clé (sans autoload). Rend faux si elle est mal formée. */
 	public static function save_secret( string $secret ): bool {
-		$secret = trim( $secret );
+		$secret = trim( $secret ); // pas de sanitize_text_field : il altérerait une clé ; le motif ci-dessous suffit
 		if ( ! preg_match( self::SECRET_PATTERN, $secret ) ) {
 			return false;
 		}
@@ -117,7 +125,9 @@ final class Technas_Pay_WC {
 		}
 		// Mobile money : la boutique vend en F CFA, la devise suit le pays du client (XOF ou XAF, même montant).
 		for ( ; ; $attempt++ ) {
-			$input['reference'] = $method === 'card' ? "$order_id-card-$attempt" : Status::retryReference( $order_id, $attempt );
+			// Préfixe « wc- » : une référence de la boutique ne croise jamais celle d'une autre
+			// application branchée sur la même clé.
+			$input['reference'] = $method === 'card' ? "wc-$order_id-card-$attempt" : 'wc-' . Status::retryReference( $order_id, $attempt );
 			try {
 				$payment = $pay->askForPayment( $input );
 				break;
@@ -131,8 +141,26 @@ final class Technas_Pay_WC {
 		$order->update_meta_data( self::META_ATTEMPT, $attempt );
 		$order->update_meta_data( self::META_PAYMENT_ID, $payment->id );
 		$order->update_meta_data( self::META_METHOD, $method );
+		$order->update_meta_data( self::META_REFERENCES, array_values( array_unique( array_merge( self::meta_list( $order, self::META_REFERENCES ), array( $payment->reference ) ) ) ) );
+		$order->update_meta_data( self::META_PAYMENT_IDS, array_values( array_unique( array_merge( self::meta_list( $order, self::META_PAYMENT_IDS ), array( $payment->id ) ) ) ) );
 		$order->save();
 		return $payment;
+	}
+
+	/** @return list<string> */
+	public static function meta_list( WC_Order $order, string $key ): array {
+		$value = $order->get_meta( $key );
+		return is_array( $value ) ? array_values( array_filter( $value, 'is_string' ) ) : array();
+	}
+
+	/** La page de paiement rendue par Technas : https, et un hôte attendu. Sinon, aucune redirection. */
+	public static function is_trusted_checkout_url( ?string $url ): bool {
+		if ( ! is_string( $url ) || ! wp_http_validate_url( $url ) ) {
+			return false;
+		}
+		$parts = wp_parse_url( $url );
+		$hosts = (array) apply_filters( 'technas_pay_wc_checkout_hosts', self::CHECKOUT_HOSTS );
+		return ( $parts['scheme'] ?? '' ) === 'https' && in_array( strtolower( (string) ( $parts['host'] ?? '' ) ), $hosts, true );
 	}
 
 	/** Mobile money : entier en F CFA. Carte : décimales permises. */
@@ -141,14 +169,37 @@ final class Technas_Pay_WC {
 		return $method === 'card' ? round( $total, 2 ) : (int) round( $total );
 	}
 
-	/** La commande d'un avis : par l'identifiant mis en métadonnées, puis par la référence (`42-3`, `42-card-1`). */
+	/**
+	 * La commande d'un avis, SEULEMENT s'il vient de cette boutique : marque `woocommerce`, clé de
+	 * commande identique (temps constant), référence et paiement créés pour cette commande, moyen de
+	 * paiement Technas Pay. Un avis d'une autre application branchée sur la même clé est ignoré.
+	 */
 	public static function order_for( \TechnasPay\Model\Payment $payment ): ?WC_Order {
-		$id = $payment->metadata['order_id'] ?? null;
-		if ( ! $id && preg_match( '/^(\d+)-(?:card-)?\d+$/', $payment->reference, $m ) ) {
-			$id = $m[1];
+		$meta = $payment->metadata;
+		if ( ( $meta['source'] ?? null ) !== 'woocommerce' || ! is_string( $meta['order_key'] ?? null ) ) {
+			return null;
 		}
-		$order = $id ? wc_get_order( (int) $id ) : false;
-		return $order instanceof WC_Order ? $order : null;
+		if ( ! preg_match( '/^wc-(\d+)-(?:card-)?\d+$/', $payment->reference, $m ) || (string) ( $meta['order_id'] ?? '' ) !== $m[1] ) {
+			return null;
+		}
+		$order = wc_get_order( (int) $m[1] );
+		if ( ! $order instanceof WC_Order
+			|| ! hash_equals( $order->get_order_key(), $meta['order_key'] )
+			|| ! str_starts_with( $order->get_payment_method(), 'technas_pay_' )
+			|| ! in_array( $payment->reference, self::meta_list( $order, self::META_REFERENCES ), true )
+			|| ! in_array( $payment->id, self::meta_list( $order, self::META_PAYMENT_IDS ), true ) ) {
+			return null;
+		}
+		return $order;
+	}
+
+	/** La commande d'un remboursement : référence `wc-…` de la boutique et paiement créé pour elle. */
+	public static function order_for_refund( \TechnasPay\Model\Refund $refund ): ?WC_Order {
+		if ( ! preg_match( '/^wc-(\d+)-(?:card-)?\d+$/', $refund->paymentReference, $m ) ) {
+			return null;
+		}
+		$order = wc_get_order( (int) $m[1] );
+		return $order instanceof WC_Order && in_array( $refund->paymentId, self::meta_list( $order, self::META_PAYMENT_IDS ), true ) ? $order : null;
 	}
 
 	/** Un message d'erreur lisible par le client, jamais un détail technique ni le secret. */

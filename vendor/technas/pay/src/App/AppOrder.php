@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TechnasPay\App;
 
+use TechnasPay\Internal\Data as D;
+
 /** Ce que `resolveOrder` rend : relu en base, jamais pris de la requête de l'app. Un tableau aux mêmes clés convient aussi. */
 final class AppOrder
 {
@@ -24,12 +26,23 @@ final class AppOrder
     ) {
     }
 
-    public static function from(self|array $raw): self
+    /** Un `AppOrder`, ou un tableau aux mêmes clés (`amount`, `customer`, `currency`…). */
+    public static function from(mixed $raw): ?self
     {
         if ($raw instanceof self) {
             return $raw;
         }
-        return new self($raw['amount'], $raw['customer'], $raw['currency'] ?? null, $raw['description'] ?? null,
-            $raw['returnUrl'] ?? ($raw['return_url'] ?? null), $raw['metadata'] ?? []);
+        if (!is_array($raw)) {
+            return null;
+        }
+        $customer = D::map($raw, 'customer');
+        $c = ['email' => D::str($customer, 'email'), 'name' => D::str($customer, 'name')];
+        foreach (['phone', 'country'] as $k) {
+            if (D::nstr($customer, $k) !== null) {
+                $c[$k] = D::str($customer, $k);
+            }
+        }
+        return new self(D::num($raw, 'amount'), $c, D::nstr($raw, 'currency'), D::nstr($raw, 'description'),
+            D::nstr($raw, 'returnUrl') ?? D::nstr($raw, 'return_url'), D::map($raw, 'metadata'));
     }
 }

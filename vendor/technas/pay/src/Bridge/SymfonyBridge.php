@@ -27,16 +27,28 @@ final class SymfonyBridge
     {
         $headers = [];
         foreach ($request->headers->all() as $name => $values) {
-            $headers[strtolower($name)] = (string) ($values[0] ?? '');
+            $headers[strtolower($name)] = $values[0] ?? '';
         }
         $r = $routes->handle(new AppRequest(
             $request->getMethod(),
             '/' . ltrim($path, '/'),
-            array_map('strval', $request->query->all()),
+            self::query($request->query->all()),
             $headers,
-            (string) $request->getContent(), // corps BRUT : la signature du webhook porte dessus
+            $request->getContent(), // corps BRUT : la signature du webhook porte dessus
             $request,
         ));
         return new JsonResponse($r->body, $r->status);
+    }
+
+    /** @return array<string, string> */
+    private static function query(mixed $params): array
+    {
+        $out = [];
+        foreach (is_array($params) ? $params : [] as $k => $v) {
+            if (is_string($k) && (is_string($v) || is_int($v))) {
+                $out[$k] = (string) $v;
+            }
+        }
+        return $out;
     }
 }

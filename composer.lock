@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "8342e5c733d2cd019d22013d6d6653a1",
+    "content-hash": "c9f7cea864cf4f7cc8cd355dbb0fab7e",
     "packages": [
         {
             "name": "technas/pay",
-            "version": "v0.1.0",
+            "version": "v0.1.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Technas-Organization/technas-pay-php.git",
-                "reference": "a3d48a1e67ecd216a70c3ae599a4011258561935"
+                "reference": "787b93e1e075588954c62cfe32fda098548525f3"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/a3d48a1e67ecd216a70c3ae599a4011258561935",
-                "reference": "a3d48a1e67ecd216a70c3ae599a4011258561935",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/787b93e1e075588954c62cfe32fda098548525f3",
+                "reference": "787b93e1e075588954c62cfe32fda098548525f3",
                 "shasum": ""
             },
             "require": {
@@ -27,9 +27,11 @@
             },
             "require-dev": {
                 "nyholm/psr7": "^1.8",
+                "phpstan/phpstan": "^2",
                 "phpunit/phpunit": "^10.5",
                 "psr/http-server-handler": "^1.0",
-                "symfony/http-foundation": "^6.4"
+                "symfony/http-foundation": "^6.4",
+                "vimeo/psalm": "^6"
             },
             "suggest": {
                 "psr/http-server-handler": "Pour TechnasPay\\Bridge\\Psr15Handler (Slim, Mezzio…)",
@@ -64,10 +66,10 @@
                 "xof"
             ],
             "support": {
-                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.1.0",
+                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.1.1",
                 "issues": "https://github.com/Technas-Organization/technas-pay-php/issues"
             },
-            "time": "2026-11-15T01:03:51+00:00"
+            "time": "2026-11-15T01:49:45+00:00"
         }
     ],
     "packages-dev": [],

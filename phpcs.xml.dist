@@ -3,6 +3,7 @@
   <description>WordPress-Extra et WordPress-VIP-Go : toutes les règles de SÉCURITÉ actives (échappement, assainissement, nonces, SQL, accès direct). Le style WordPress est appliqué (tabulations, espaces). Seules sont écartées : les conditions Yoda, le nommage class-*.php déjà suivi, l'obligation de docblocks et le ternaire court.</description>
   <file>technas-pay-woocommerce.php</file>
   <file>includes</file>
+  <file>uninstall.php</file>
   <arg name="extensions" value="php"/>
   <arg value="sp"/>
   <config name="minimum_wp_version" value="6.3"/>
@@ -23,7 +24,7 @@
   </rule>
   <!-- Capacité définie par WooCommerce. -->
   <rule ref="WordPress.WP.Capabilities">
-    <properties><property name="custom_capabilities" type="array"><element value="edit_shop_orders"/></property></properties>
+    <properties><property name="custom_capabilities" type="array"><element value="edit_shop_orders"/><element value="manage_woocommerce"/></property></properties>
   </rule>
   <rule ref="WordPress.WP.I18n">
     <properties><property name="text_domain" type="array"><element value="technas-pay-woocommerce"/></property></properties>

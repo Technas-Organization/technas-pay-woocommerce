@@ -131,3 +131,21 @@ msgstr "Enregistrée : %s. Collez une nouvelle clé pour la remplacer."
 msgid "You are not allowed to refund orders."
 msgstr "Vous n'avez pas le droit de rembourser des commandes."
 
+msgid "Technas Pay: unexpected payment page address, not opened."
+msgstr "Technas Pay : adresse de page de paiement inattendue, non ouverte."
+
+msgid "Technas Pay returned a different refund amount. Check the order before refunding again."
+msgstr "Technas Pay a renvoyé un autre montant de remboursement. Vérifiez la commande avant de rembourser de nouveau."
+
+msgid "Technas Pay: a SECOND payment was received for this already paid order (%1$s %2$s, reference %3$s). Refund it to the customer."
+msgstr "Technas Pay : un SECOND paiement a été reçu pour cette commande déjà payée (%1$s %2$s, référence %3$s). Remboursez-le au client."
+
+msgid "Technas Pay TEST payment: no money was received. Do not ship. Switch to a tps_live_ key to take real payments."
+msgstr "Paiement de TEST Technas Pay : aucun argent n'a été reçu. N'expédiez pas. Passez à une clé tps_live_ pour encaisser pour de vrai."
+
+msgid "Technas Pay is in TEST mode (tps_test_ key): no real money is taken, and test orders stay on hold. Switch to a tps_live_ key before selling."
+msgstr "Technas Pay est en mode TEST (clé tps_test_) : aucun argent réel n'est encaissé, et les commandes de test restent en attente. Passez à une clé tps_live_ avant de vendre."
+
+msgid "%s (TEST, no real payment)"
+msgstr "%s (TEST, aucun paiement réel)"
+

@@ -11,9 +11,9 @@
     ),
     'versions' => array(
         'technas/pay' => array(
-            'pretty_version' => 'v0.1.0',
-            'version' => '0.1.0.0',
-            'reference' => 'a3d48a1e67ecd216a70c3ae599a4011258561935',
+            'pretty_version' => 'v0.1.1',
+            'version' => '0.1.1.0',
+            'reference' => '787b93e1e075588954c62cfe32fda098548525f3',
             'type' => 'library',
             'install_path' => __DIR__ . '/../technas/pay',
             'aliases' => array(),

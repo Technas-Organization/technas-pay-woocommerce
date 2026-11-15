@@ -18,7 +18,7 @@ jobs:
       - name: Zip installable
         run: |
           mkdir -p dist/technas-pay-woocommerce
-          cp -r technas-pay-woocommerce.php includes assets languages vendor readme.txt README.md LICENSE dist/technas-pay-woocommerce/
+          cp -r technas-pay-woocommerce.php uninstall.php includes assets languages vendor readme.txt README.md LICENSE dist/technas-pay-woocommerce/
           (cd dist && zip -qr technas-pay-woocommerce.zip technas-pay-woocommerce)
       - name: Release GitHub
         env:

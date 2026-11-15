@@ -19,7 +19,11 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 		$this->supports   = array( 'products', 'refunds' );
 		$this->init_form_fields();
 		$this->init_settings();
-		$this->title       = $this->get_option( 'title' );
+		$this->title = $this->get_option( 'title' );
+		if ( Technas_Pay_WC::is_configured() && Technas_Pay_WC::is_test_mode() ) {
+			/* translators: %s: payment method title */
+			$this->title = sprintf( __( '%s (TEST, no real payment)', 'technas-pay-woocommerce' ), $this->title );
+		}
 		$this->description = $this->get_option( 'description' );
 		add_action( 'woocommerce_update_options_payment_gateways_' . $this->id, array( $this, 'process_admin_options' ) );
 	}
@@ -78,7 +82,9 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 				'redirect' => $this->get_return_url( $order ),
 			);
 		}
-		if ( ! $payment->checkoutUrl ) {
+		if ( ! Technas_Pay_WC::is_trusted_checkout_url( $payment->checkoutUrl ) ) {
+			// Une adresse de paiement inattendue n'est jamais suivie (hameçonnage, javascript:…).
+			$order->add_order_note( __( 'Technas Pay: unexpected payment page address, not opened.', 'technas-pay-woocommerce' ) );
 			wc_add_notice( __( 'The payment could not be started. Please try again.', 'technas-pay-woocommerce' ), 'error' );
 			return array( 'result' => 'failure' );
 		}
@@ -108,8 +114,10 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 		}
 		$method = (string) $order->get_meta( Technas_Pay_WC::META_METHOD ) ?: 'mobile_money';
 		$value  = $amount === null ? null : ( $method === 'card' ? round( (float) $amount, 2 ) : (int) round( (float) $amount ) );
-		// Une référence par remboursement WooCommerce : rejouer la même demande ne rembourse pas deux fois.
-		$reference = 'wc-' . $order->get_id() . '-r' . count( $order->get_refunds() );
+		// Une référence par remboursement WooCommerce (son identifiant, jamais réutilisé) : rejouer la
+		// même demande ne rembourse pas deux fois.
+		$refunds   = $order->get_refunds();
+		$reference = 'wc-' . $order->get_id() . '-refund-' . ( $refunds ? $refunds[0]->get_id() : wp_generate_uuid4() );
 		try {
 			$refund = Technas_Pay_WC::client()->refund( $payment_id, $value, 'partner', $reference );
 		} catch ( TechnasPayException $e ) {
@@ -125,6 +133,9 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 				default => sprintf( /* translators: %s: error code */ __( 'Technas Pay refused the refund (%s).', 'technas-pay-woocommerce' ), $e->errorCode ),
 			};
 			return new WP_Error( 'technas_pay_refund', $message );
+		}
+		if ( $value !== null && abs( (float) $refund->amount - (float) $value ) > 0.009 ) {
+			return new WP_Error( 'technas_pay_refund', __( 'Technas Pay returned a different refund amount. Check the order before refunding again.', 'technas-pay-woocommerce' ) );
 		}
 		$order->add_order_note(
 			sprintf(

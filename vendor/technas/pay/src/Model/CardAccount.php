@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TechnasPay\Model;
 
+use TechnasPay\Internal\Data as D;
+
 /**
  * Où en est votre compte de paiement par carte : `not_started`, `onboarding`, `under_review`,
  * `restricted` (`requirements`, `disabledReason`) ou `enabled`.
@@ -11,7 +13,7 @@ namespace TechnasPay\Model;
  */
 final class CardAccount
 {
-    /** @param string[] $requirements */
+    /** @param list<string> $requirements */
     public function __construct(
         public readonly string $status,
         public readonly bool $canAcceptPayments,
@@ -25,17 +27,21 @@ final class CardAccount
     ) {
     }
 
-    /** @param array<string, mixed> $r */
+    /** @param array<mixed> $r */
     public static function fromApi(array $r): self
     {
         return new self(
-            (string) ($r['status'] ?? ''), (bool) ($r['can_accept_payments'] ?? false), (bool) ($r['payouts_enabled'] ?? false),
-            (bool) ($r['details_submitted'] ?? false), $r['country'] ?? null, array_values($r['requirements'] ?? []),
-            $r['disabled_reason'] ?? null, (bool) ($r['test_mode'] ?? false), $r['updated_at'] ?? null,
+            D::str($r, 'status'), D::bool($r, 'can_accept_payments'), D::bool($r, 'payouts_enabled'),
+            D::bool($r, 'details_submitted'), D::nstr($r, 'country'), D::strings($r, 'requirements'),
+            D::nstr($r, 'disabled_reason'), D::bool($r, 'test_mode'), D::nstr($r, 'updated_at'),
         );
     }
 
-    /** Ce que l'app voit du compte carte : ni pays, ni identifiants. @return array<string, mixed> */
+    /**
+     * Ce que l'app voit du compte carte : ni pays, ni identifiants.
+     *
+     * @return array{status: string, can_accept_payments: bool, payouts_enabled: bool, requirements: list<string>, disabled_reason: ?string}
+     */
     public function toAppJson(): array
     {
         return [

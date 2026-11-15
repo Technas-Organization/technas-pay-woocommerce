@@ -57,6 +57,18 @@ add_action(
 			}
 		);
 
+		// Clé de test : un bandeau permanent dans l'administration (une boutique ouverte avec une clé de
+		// test ne doit jamais l'ignorer).
+		add_action(
+			'admin_notices',
+			static function (): void {
+				if ( ! current_user_can( 'manage_woocommerce' ) || ! Technas_Pay_WC::is_configured() || ! Technas_Pay_WC::is_test_mode() ) {
+					return;
+				}
+				echo '<div class="notice notice-warning"><p>' . esc_html__( 'Technas Pay is in TEST mode (tps_test_ key): no real money is taken, and test orders stay on hold. Switch to a tps_live_ key before selling.', 'technas-pay-woocommerce' ) . '</p></div>';
+			}
+		);
+
 		// L'adresse d'avis : /wp-json/technas-pay/v1/webhook (signature obligatoire).
 		add_action( 'rest_api_init', array( Technas_Pay_Webhook::class, 'register_route' ) );
 		// Ancienne adresse /?wc-api=technas_pay, gardée : même traitement, même signature exigée.
