@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    # Dépôt PUBLIC : machines GitHub, gratuites et isolées. Jamais les runners ARC du cluster ici
+    # (une PR de fork y exécuterait son code ; décision de Jonas, 15/11/2026).
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.1", "8.4"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - run: vendor/bin/phpunit
+      - name: Syntaxe des exemples
+        run: for f in examples/*.php; do php -l "$f"; done
+
+  securite:
+    # Exigences de sécurité (Jonas, 15/11/2026) : analyse statique au plus strict, propagation des
+    # données reçues, dépendances vulnérables, secrets.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: curl, json
+          coverage: none
+      - run: composer install --no-interaction --no-progress
+      - name: PHPStan, niveau max
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=1G
+      - name: Psalm
+        run: vendor/bin/psalm --no-progress --threads=1
+      - name: Psalm, analyse de propagation (taint)
+        run: vendor/bin/psalm --no-progress --threads=1 --taint-analysis
+      - name: Dépendances vulnérables
+        run: composer audit
+      - name: Secrets dans l'historique
+        uses: trufflesecurity/trufflehog@v3.88.0
+        with:
+          version: 3.88.0
+          extra_args: --only-verified

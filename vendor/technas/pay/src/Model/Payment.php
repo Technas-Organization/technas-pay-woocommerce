@@ -1,0 +1,93 @@
+<?php
+
+declare(strict_types=1);
+
+namespace TechnasPay\Model;
+
+use TechnasPay\Internal\Data as D;
+
+/**
+ * Un paiement. Montants en unité principale (5000 = 5 000 FCFA). Hors zone franc CFA, un montant
+ * payé peut avoir des centimes (121.96 GHS) : stockez-le en décimal, ne l'arrondissez pas.
+ */
+final class Payment
+{
+    /**
+     * @param array<string, mixed>|null $fx
+     * @param array<string, mixed> $metadata
+     */
+    public function __construct(
+        public readonly string $id,
+        public readonly string $reference,
+        public readonly int|float $amount,
+        /** `null` tant que le payeur n'a pas choisi son pays. */
+        public readonly ?string $currency,
+        public readonly int|float $commission,
+        /** Ce qui vous revient. */
+        public readonly int|float $netAmount,
+        /** `pending`, `completed`, `failed` (PAS définitif), `expired` (définitif), `amount_mismatch`. */
+        public readonly string $status,
+        /** `mobile_money` ou `card`. */
+        public readonly string $method,
+        public readonly int|float $refundedAmount,
+        public readonly int|float|null $originalAmount,
+        public readonly ?string $originalCurrency,
+        /** Change hors zone CFA. */
+        public readonly ?array $fx,
+        /** `null` après expiration : n'envoyez jamais un ancien lien. */
+        public readonly ?string $checkoutUrl,
+        public readonly array $metadata,
+        public readonly bool $testMode,
+        public readonly ?string $createdAt,
+        public readonly ?string $completedAt,
+        public readonly ?string $expiresAt,
+        public readonly ?string $expiredAt,
+    ) {
+    }
+
+    /** @param array<mixed> $r */
+    public static function fromApi(array $r): self
+    {
+        return new self(
+            D::str($r, 'id'),
+            D::str($r, 'reference'),
+            D::num($r, 'amount'),
+            D::nstr($r, 'currency'),
+            D::num($r, 'commission'),
+            D::num($r, 'net_amount'),
+            D::str($r, 'status'),
+            D::str($r, 'method', 'mobile_money'),
+            D::num($r, 'refunded_amount'),
+            D::nnum($r, 'original_amount'),
+            D::nstr($r, 'original_currency'),
+            D::nmap($r, 'fx'),
+            D::nstr($r, 'checkout_url'),
+            D::map($r, 'metadata'),
+            D::bool($r, 'test_mode'),
+            D::nstr($r, 'created_at'),
+            D::nstr($r, 'completed_at'),
+            D::nstr($r, 'expires_at'),
+            D::nstr($r, 'expired_at'),
+        );
+    }
+
+    /**
+     * Ce que VOTRE backend renvoie à votre app (`['payment' => $p->toAppJson()]`) : ni commission,
+     * ni montant net, ni métadonnées. C'est le contrat que lit `technas_pay_flutter`.
+     *
+     * @return array{id: string, reference: string, status: string, checkout_url: ?string, amount: int|float, currency: ?string, expires_at: ?string, method: string}
+     */
+    public function toAppJson(): array
+    {
+        return [
+            'id' => $this->id,
+            'reference' => $this->reference,
+            'status' => $this->status,
+            'checkout_url' => $this->checkoutUrl,
+            'amount' => $this->amount,
+            'currency' => $this->currency,
+            'expires_at' => $this->expiresAt,
+            'method' => $this->method,
+        ];
+    }
+}
