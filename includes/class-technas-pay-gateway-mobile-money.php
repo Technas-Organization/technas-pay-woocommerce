@@ -11,7 +11,7 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 	public function __construct() {
 		$this->id                 = 'technas_pay_mobile_money';
 		$this->method_title       = __( 'Mobile money (Technas Pay)', 'technas-pay-woocommerce' );
-		$this->method_description = __( 'Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription.', 'technas-pay-woocommerce' );
+		$this->method_description = __( 'Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription.', 'technas-pay-woocommerce' );
 		parent::__construct();
 	}
 
