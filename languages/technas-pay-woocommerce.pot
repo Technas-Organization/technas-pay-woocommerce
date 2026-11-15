@@ -195,3 +195,9 @@ msgstr ""
 
 msgid "Open the Technas Pay console"
 msgstr ""
+
+#. translators: %s: payment ids
+#: includes/class-technas-pay-webhook.php
+#, php-format
+msgid "Technas Pay: the order is paid, but an earlier attempt at an outdated amount was also paid (%s). Refund it to the customer before shipping."
+msgstr ""

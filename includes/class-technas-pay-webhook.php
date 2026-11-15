@@ -165,6 +165,10 @@ final class Technas_Pay_Webhook {
 		$same     = $currency === strtoupper( $order->get_currency() )
 			|| ( $method === 'mobile_money' && in_array( $currency, $cfa, true ) && in_array( strtoupper( $order->get_currency() ), $cfa, true ) );
 		if ( abs( (float) $paid - (float) $expected ) > 0.009 || ! $same ) {
+			// Souvent un ANCIEN essai (le total a changé depuis) : s'il n'est pas rendu, la commande
+			// peut ensuite être payée par le bon essai ; celui-ci restera alors à rembourser.
+			$order->update_meta_data( Technas_Pay_WC::META_TO_REFUND, array_values( array_unique( array_merge( Technas_Pay_WC::meta_list( $order, Technas_Pay_WC::META_TO_REFUND ), array( $payment->id ) ) ) ) );
+			$order->save();
 			$order->update_status(
 				'on-hold',
 				sprintf(
@@ -194,6 +198,18 @@ final class Technas_Pay_Webhook {
 				$payment->reference,
 			)
 		);
+		// Un ancien essai, à l'ancien montant, a aussi été payé : rien n'est activé deux fois, il est à rembourser.
+		$extra = array_values( array_diff( Technas_Pay_WC::meta_list( $order, Technas_Pay_WC::META_TO_REFUND ), array( $payment->id ) ) );
+		if ( $extra ) {
+			$order->update_status(
+				'on-hold',
+				sprintf(
+					/* translators: %s: payment ids */
+					__( 'Technas Pay: the order is paid, but an earlier attempt at an outdated amount was also paid (%s). Refund it to the customer before shipping.', 'technas-pay-woocommerce' ),
+					implode( ', ', $extra ),
+				)
+			);
+		}
 	}
 
 	private static function on_expired( Event $e ): void {

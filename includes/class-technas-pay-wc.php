@@ -32,6 +32,8 @@ final class Technas_Pay_WC {
 	public const META_PAYMENT_IDS = '_technas_pay_payment_ids';
 	/** Le paiement qui a payé la commande (un second paiement est signalé, jamais ignoré). */
 	public const META_PAID_PAYMENT = '_technas_pay_paid_payment_id';
+	/** Paiements reçus à un autre montant que la commande (ancien essai) : à rembourser si elle est payée autrement. */
+	public const META_TO_REFUND = '_technas_pay_payments_to_refund';
 
 	/**
 	 * Le seuil d'identité du compte (`getAccountKyc()`), gardé une heure et rafraîchi par l'avis

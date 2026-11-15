@@ -225,6 +225,26 @@ Technas_Pay_WC::start_payment(wc_get_order($o3->get_id()), 'card', 'https://bout
 Technas_Pay_Webhook::handle($b3b, $s3b);
 tp_check(wc_get_order($o3->get_id())->get_status() === 'on-hold', 'M3 : second paiement reçu : commande en attente, à rembourser', wc_get_order($o3->get_id())->get_status());
 
+// 6 bis. Ancien essai payé : le client paie l'ancienne page (5000), puis la nouvelle (7500, total changé).
+$o3c = tp_order(5000);
+$id3c = $o3c->get_id();
+[$p3c1, $r3c1] = tp_start($fake, $mm, $o3c, 'pay_3c1');
+$o3c = wc_get_order($id3c);
+$o3c->set_total(7500);
+$o3c->save();
+$fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_3c2', 'reference' => "wc-$id3c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_3c2'])];
+$mm->process_payment($id3c);
+[$b3c1, $s3c1] = tp_completed(wc_get_order($id3c), 'pay_3c1', $r3c1, ['amount' => 5000]);
+Technas_Pay_Webhook::handle($b3c1, $s3c1);
+tp_check(!wc_get_order($id3c)->is_paid(), 'ancien essai payé à l\'ancien montant : la commande n\'est pas payée');
+[$b3c2, $s3c2] = tp_completed(wc_get_order($id3c), 'pay_3c2', "wc-$id3c-2", ['amount' => 7500]);
+Technas_Pay_Webhook::handle($b3c2, $s3c2);
+$o3c = wc_get_order($id3c);
+$notes3c = implode(' | ', array_map(fn ($n) => $n->content, wc_get_order_notes(['order_id' => $id3c])));
+tp_check($o3c->get_status() === 'on-hold' && $o3c->get_meta(Technas_Pay_WC::META_PAID_PAYMENT) === 'pay_3c2' && str_contains($notes3c, 'pay_3c1'),
+    'ancien essai payé puis nouvel essai payé : payée par le nouvel essai, en attente, l\'ancien nommé pour être remboursé', $o3c->get_status());
+
 // 7. Une référence = un essai : un essai expiré est sauté, le suivant est créé.
 $o4 = tp_order();
 $id4 = $o4->get_id();
