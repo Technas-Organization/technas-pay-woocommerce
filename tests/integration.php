@@ -111,7 +111,7 @@ $result = $mm->process_payment($oid);
 tp_check($result['result'] === 'success' && $result['redirect'] === 'https://pay-api.technas.fr/checkout/pay_1', 'process_payment redirige vers la page Technas', $result);
 $sent = end($fake->calls);
 tp_check($sent['path'] === '/v1/payments' && $sent['body']['amount'] === 5000 && $sent['body']['reference'] === "$oid-1", 'montant entier 5000 et référence {commande}-1', $sent['body']);
-tp_check(!isset($sent['body']['currency']), 'pas de devise en zone CFA : le client choisit son pays');
+tp_check(($sent['body']['currency'] ?? null) === 'XOF', 'devise déduite du pays du client (TG → XOF), jamais de la boutique', $sent['body']['currency'] ?? null);
 tp_check($sent['auth'] === 'Bearer pk_ci' && !str_contains(json_encode($fake->calls), 'ws_ci_secret'), 'seule la clé d\'API part, jamais le secret des avis');
 tp_check(wc_get_order($oid)->get_status() === 'pending' && !wc_get_order($oid)->is_paid(), 'la commande attend : le retour du navigateur ne prouve rien');
 
