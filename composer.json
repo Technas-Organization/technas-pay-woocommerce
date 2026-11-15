@@ -2,11 +2,20 @@
   "name": "technas/pay-woocommerce",
   "description": "Technas Pay pour WooCommerce : mobile money et carte bancaire.",
   "type": "wordpress-plugin",
+  "version": "0.1.0",
   "license": "MIT",
-  "repositories": [{ "type": "vcs", "url": "https://github.com/Technas-Organization/technas-pay-php" }],
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/Technas-Organization/technas-pay-php"
+    }
+  ],
   "require": {
     "php": ">=8.1",
     "technas/pay": "^0.1"
   },
-  "config": { "sort-packages": true, "optimize-autoloader": true }
+  "config": {
+    "sort-packages": true,
+    "optimize-autoloader": true
+  }
 }
