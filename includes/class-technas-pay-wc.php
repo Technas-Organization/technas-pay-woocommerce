@@ -132,8 +132,10 @@ final class Technas_Pay_WC {
 	}
 
 	/**
-	 * L'avis `account.kyc_required` met l'état gardé à jour, sans appeler Technas : seuil proche
-	 * (`soon`) ou atteint (`blocked`), avec l'encaissé, le seuil, l'échéance et l'adresse de la console.
+	 * L'avis `account.kyc_required` met l'état gardé à jour, sans appeler Technas : l'encaissé, le
+	 * seuil, l'échéance et l'adresse de la console. `stage` et `block_reason` sont lus tels quels quand
+	 * l'avis les porte ; un avis plus ancien qui ne les porte pas : `stage` déduit de `blocked`
+	 * (`blocked` ou `soon`), motif du blocage inchangé.
 	 */
 	public static function kyc_from_event( \TechnasPay\Model\KycRequired $k ): void {
 		$cached = get_transient( self::KYC_TRANSIENT );
@@ -142,12 +144,16 @@ final class Technas_Pay_WC {
 			'level'   => 'none',
 		);
 		$state  = array(
-			'stage'         => $k->blocked ? 'blocked' : 'soon',
+			'stage'         => $k->stage ?? ( $k->blocked ? 'blocked' : 'soon' ),
 			'collected_xof' => $k->collectedXof,
 			'threshold_xof' => $k->thresholdXof,
 			'deadline'      => $k->deadline,
 			'blocked'       => $k->blocked,
-		) + ( $k->consoleUrl !== '' ? array( 'console_url' => $k->consoleUrl ) : array() );
+		) + ( $k->consoleUrl !== '' ? array( 'console_url' => $k->consoleUrl ) : array() )
+			+ ( $k->blockReason !== null ? array( 'reason' => $k->blockReason ) : array() )
+			+ ( $k->daysElapsed !== null ? array( 'days_elapsed' => $k->daysElapsed ) : array() )
+			+ ( $k->graceDays !== null ? array( 'grace_days' => $k->graceDays ) : array() )
+			+ ( $k->firstCollectedAt !== null ? array( 'first_collected_at' => $k->firstCollectedAt ) : array() );
 		self::store_kyc( \TechnasPay\Model\AccountKyc::fromApi( $state + $base ) );
 	}
 

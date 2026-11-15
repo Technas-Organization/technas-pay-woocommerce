@@ -141,7 +141,7 @@ $kyc = $pay->getAccountKyc(); // à montrer au marchand, jamais au client final
 // $kyc->collectedXof, $kyc->thresholdXof, $kyc->graceDays, $kyc->deadline, $kyc->consoleUrl
 ```
 
-Les chiffres viennent de l'API : ne les écrivez jamais en dur. L'avis `account.kyc_required` (`onKycRequired`, contenu dans `$e->kycRequired`) arrive à 80 % du seuil, 7 jours avant l'échéance, puis au premier refus : prévenez le responsable. Sur l'erreur `kyc_required`, proposez la carte ou dites au client que le paiement mobile money n'est pas disponible pour le moment ; ne réessayez pas.
+Les chiffres viennent de l'API : ne les écrivez jamais en dur. L'avis `account.kyc_required` (`onKycRequired`, contenu dans `$e->kycRequired`) arrive à 80 % du seuil, 7 jours avant l'échéance, puis au premier refus : prévenez le responsable. Il porte aussi, quand l'API les envoie, `stage`, `blockReason` (`amount` ou `duration`), `daysElapsed`, `graceDays` et `firstCollectedAt` (`null` sur un avis plus ancien). Sur l'erreur `kyc_required`, proposez la carte ou dites au client que le paiement mobile money n'est pas disponible pour le moment ; ne réessayez pas.
 
 ## La règle de relance
 
