@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "d39c0ef2dbafdcd3d1ca5f244f45fb9a",
+    "content-hash": "49ae8d59306b48def5f7f917ec44d85e",
     "packages": [
         {
             "name": "technas/pay",
@@ -12,12 +12,12 @@
             "source": {
                 "type": "git",
                 "url": "https://github.com/Technas-Organization/technas-pay-php.git",
-                "reference": "29e9efc0c5f229b6fb82e0b25ad59f561f7ec45a"
+                "reference": "c82206e7e6cb54c632974b5bdc4453189fadf501"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/29e9efc0c5f229b6fb82e0b25ad59f561f7ec45a",
-                "reference": "29e9efc0c5f229b6fb82e0b25ad59f561f7ec45a",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/c82206e7e6cb54c632974b5bdc4453189fadf501",
+                "reference": "c82206e7e6cb54c632974b5bdc4453189fadf501",
                 "shasum": ""
             },
             "require": {
