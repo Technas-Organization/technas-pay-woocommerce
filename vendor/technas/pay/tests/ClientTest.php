@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace TechnasPay\Tests;
 
 use PHPUnit\Framework\TestCase;
+use TechnasPay\Model\KycRequired;
 use TechnasPay\Model\Refund;
 use TechnasPay\Status;
 use TechnasPay\TechnasPay;
 use TechnasPay\TechnasPayException;
+use TechnasPay\Webhook\Event;
 use TechnasPay\Webhook\Signature;
 use TechnasPay\Webhook\WebhookHandlers;
 use TechnasPay\Webhook\WebhookVerificationException;
@@ -206,5 +208,72 @@ final class ClientTest extends TestCase
         self::assertSame('CMD-42-2', Status::retryReference('CMD-42', 2));
         self::assertSame('XOF', Status::currencyForCountry(' tg '));
         self::assertNull(Status::currencyForCountry('GH'));
+    }
+
+    public function testSeuilDIdentiteLuParLaCleApi(): void
+    {
+        $full = ['applies' => true, 'stage' => 'soon', 'level' => 'none', 'days_elapsed' => 12, 'warn_from_xof' => 800000,
+            'warn_from_date' => '2026-12-01T00:00:00Z', 'collected_xof' => 812500, 'threshold_xof' => 1000000, 'grace_days' => 30,
+            'first_collected_at' => '2026-11-03T10:00:00Z', 'deadline' => '2026-12-03T10:00:00Z', 'waiver_until' => '2026-12-10T00:00:00Z',
+            'blocked' => false, 'reason' => null, 'console_url' => 'https://pay.technas.fr/console/identite'];
+        $nulls = ['applies' => false, 'stage' => 'etat_futur', 'level' => 'niveau_futur', 'days_elapsed' => null, 'warn_from_xof' => 800000,
+            'warn_from_date' => null, 'collected_xof' => 0, 'threshold_xof' => 1000000, 'grace_days' => 30, 'first_collected_at' => null,
+            'deadline' => null, 'waiver_until' => null, 'blocked' => true, 'reason' => 'raison_future', 'console_url' => 'https://pay.technas.fr/console/identite'];
+        $t = new FakeTransport([['status' => 200, 'body' => $full], ['status' => 200, 'body' => $nulls]]);
+        $pay = $this->pay($t);
+        $k = $pay->getAccountKyc();
+        self::assertSame(['GET', 'https://gw.test/v1/account/kyc', 'Bearer ' . self::API_KEY, null],
+            [$t->calls[0]['method'], $t->calls[0]['url'], $t->calls[0]['headers']['Authorization'], $t->calls[0]['body']]);
+        self::assertSame([true, 'soon', 'none', 12, 800000, '2026-12-01T00:00:00Z', 812500, 1000000, 30, '2026-11-03T10:00:00Z',
+            '2026-12-03T10:00:00Z', '2026-12-10T00:00:00Z', false, null, 'https://pay.technas.fr/console/identite'],
+            [$k->applies, $k->stage, $k->level, $k->daysElapsed, $k->warnFromXof, $k->warnFromDate, $k->collectedXof, $k->thresholdXof,
+                $k->graceDays, $k->firstCollectedAt, $k->deadline, $k->waiverUntil, $k->blocked, $k->reason, $k->consoleUrl]);
+        $n = $pay->getAccountKyc();
+        self::assertSame([false, 'etat_futur', 'niveau_futur', null, null, null, null, null, true, 'raison_future'],
+            [$n->applies, $n->stage, $n->level, $n->daysElapsed, $n->warnFromDate, $n->firstCollectedAt, $n->deadline, $n->waiverUntil, $n->blocked, $n->reason],
+            'valeurs inconnues gardées, null lus null');
+    }
+
+    public function testAvisSeuilDIdentite(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $seen = [];
+        $h = new WebhookHandlers(
+            onKycRequired: function (Event $e) use (&$seen) { $seen[] = $e->kycRequired; },
+            onCardAccountUpdated: fn () => self::fail('mauvaise fonction'),
+        );
+        $body = json_encode(['id' => 'evt_k', 'type' => 'account.kyc_required', 'created_at' => 'x', 'data' => [
+            'reason' => 'amount_80', 'collected_xof' => 812500, 'threshold_xof' => 1000000, 'deadline' => '2026-12-03T10:00:00Z',
+            'blocked' => false, 'console_url' => 'https://pay.technas.fr/console/identite']]);
+        $r = $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h);
+        self::assertSame(200, $r['status']);
+        self::assertCount(1, $seen);
+        $k = $seen[0];
+        self::assertInstanceOf(KycRequired::class, $k);
+        self::assertSame(['amount_80', 812500, 1000000, '2026-12-03T10:00:00Z', false, 'https://pay.technas.fr/console/identite'],
+            [$k->reason, $k->collectedXof, $k->thresholdXof, $k->deadline, $k->blocked, $k->consoleUrl]);
+        self::assertNull($r['event']?->payment);
+        self::assertSame(400, $pay->handleWebhook($body, Signature::sign($body, 'autre'), $h)['status']);
+    }
+
+    public function testRefusSeuilDIdentiteEtContrat(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 409, 'body' => ['code' => 'kyc_required', 'message' => 'm', 'console_url' => 'https://pay.technas.fr/console/identite', 'reason' => 'amount']],
+            ['status' => 409, 'body' => ['code' => 'contract_required', 'message' => 'm', 'console_url' => 'https://pay.technas.fr/console/contrat', 'version' => '2026-11']],
+        ]);
+        $pay = $this->pay($t);
+        foreach ([
+            ['kyc_required', ['reason' => 'amount', 'consoleUrl' => 'https://pay.technas.fr/console/identite']],
+            ['contract_required', ['consoleUrl' => 'https://pay.technas.fr/console/contrat', 'version' => '2026-11']],
+        ] as [$code, $details]) {
+            try {
+                $pay->askForPayment(['amount' => 5000, 'reference' => '42-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci']);
+                self::fail("attendu $code");
+            } catch (TechnasPayException $e) {
+                self::assertSame([$code, 409, false], [$e->errorCode, $e->status, $e->retryable()]);
+                self::assertEquals($details, $e->details);
+            }
+        }
     }
 }

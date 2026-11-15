@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.1
+composer require technas/pay:^0.2
 ```
 
 ## Quelle méthode pour quoi
@@ -36,6 +36,7 @@ composer require technas/pay:^0.1
 | Payer par carte | `$pay->askForPayment(['method' => 'card', 'amount' => 12.5, 'currency' => 'EUR', …])` après `$pay->getCardAccount()->canAcceptPayments` |
 | Ouvrir le compte carte | `$pay->startCardOnboarding($returnUrl, $refreshUrl, 'TG')`, rediriger le RESPONSABLE vers `url` |
 | Tableau de bord carte | `$pay->getCardDashboardLink()` → tableau de bord de votre compte carte |
+| Seuil d'identité du compte (marchand) | `$pay->getAccountKyc()` ; avis `onKycRequired` |
 | Tester la route d'avis | `$pay->createTestWebhook('payment.completed', '42-1', 5000, 'XOF')` |
 | Jouer le payeur en test | `$pay->simulateTestPayment($id, 'completed' \| 'failed' \| 'expired')` |
 
@@ -128,6 +129,7 @@ Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: �
 - **Ne rattrapez pas leurs erreurs pour répondre 200.** Une erreur doit remonter pour que le webhook soit relivré.
 - **`onFailed` n'est pas définitif** : `onCompleted` peut arriver après.
 - **`onExpired` est définitif** : seul moment où relancer le client (nouvelle référence).
+- **`onKycRequired`** (`account.kyc_required`) : prévenez le RESPONSABLE du compte (pas le client) ; contenu dans `$e->kycRequired`. Voir « Seuil d'identité ».
 - **`onRefund`** : prévenez le client, par e-mail ou SMS. Technas ne lui écrit pas.
   - `refund.completed` : l'argent est arrivé, `sentAmount` sur son téléphone.
   - `refund.failed` : rien n'est parti et votre solde est recrédité. Proposez un autre moyen, ou refaites le même appel `refund` : il est permis après un échec.
@@ -153,6 +155,15 @@ Ce n'est PAS le même parcours que le mobile money. Ne le proposez que si l'util
 6. **Erreur `card_account_not_ready` (409)** : le compte n'encaisse pas encore. `$e->details['accountStatus']` dit pourquoi. Ne réessayez pas : proposez le mobile money, ou renvoyez le responsable vers `startCardOnboarding`.
 7. **En test** (`tps_test_`), la carte de test `4242 4242 4242 4242`, une date future et n'importe quel code valident le paiement ; l'inscription de test accepte des données fictives.
 
+## Seuil d'identité
+
+En réel, un compte sans pièce d'identité vérifiée voit ses **nouveaux** paiements mobile money refusés (`kyc_required`) au-delà de 1 000 000 F CFA encaissés en cumul, ou 30 jours après son premier paiement réel encaissé. Rien de ce qui existe n'est bloqué (paiement en cours, remboursement, reversement, lecture). La carte n'est pas concernée. Le responsable dépose sa pièce dans la console (`consoleUrl`).
+
+1. **Afficher l'état au marchand** (réglages, tableau de bord ; jamais au client final) avec `$pay->getAccountKyc()` : `stage` (`ok`, `soon`, `blocked`, `verified`, `not_applicable`), `collectedXof`, `thresholdXof`, `graceDays`, `deadline`, `consoleUrl`. Une valeur inconnue de `stage`, `level` ou `reason` est gardée telle quelle : traitez-la comme « à vérifier dans la console ».
+2. **Brancher l'avis** `account.kyc_required` : `new WebhookHandlers(onKycRequired: fn (Event $e) => prevenirLeResponsable($e->kycRequired))`. `$e->kycRequired->reason` vaut `amount_80`, `deadline_7d` ou `blocked`.
+3. **Sur l'erreur `kyc_required`** : proposez la carte (si `canAcceptPayments`) ou expliquez au client que le paiement mobile money n'est pas disponible pour le moment. Ne réessayez jamais. Prévenez le responsable avec `$e->details['consoleUrl']`.
+4. **Les chiffres (1 000 000, 30) viennent de l'API** : ne les écrivez jamais en dur dans le code.
+
 ## Rembourser
 
 - **Appel** : `$pay->refund($paymentId)` rembourse tout ce qui reste ; `$pay->refund($paymentId, amount: 2000)` rembourse une partie.
@@ -177,6 +188,8 @@ Ce n'est PAS le même parcours que le mobile money. Ne le proposez que si l'util
 - `card_account_not_ready` (409) : paiement par carte demandé sans compte carte actif. Voir « Paiement par carte ».
 - `card_payments_unavailable` (503) : la carte n'est pas encore ouverte chez Technas. Proposez le mobile money.
 - `currency_required` : `method: 'card'` sans `currency`.
+- `kyc_required` (409) : seuil d'identité atteint, les nouveaux paiements mobile money sont refusés. `$e->details['consoleUrl']`, `$e->details['reason']` (`amount` ou `duration`). Pas rejouable : proposez la carte ou dites au client que le paiement mobile money n'est pas disponible pour le moment. Voir « Seuil d'identité ».
+- `contract_required` (409) : le responsable doit accepter un contrat dans la console. `$e->details['consoleUrl']`, `$e->details['version']` (la version à accepter). Pas rejouable.
 
 `$e->errorCode`, avec `$e->retryable()` (vrai : refaites **le même appel**, mêmes valeurs) et `$e->details`.
 
@@ -204,6 +217,8 @@ Ce n'est PAS le même parcours que le mobile money. Ne le proposez que si l'util
 | `payer_unknown`, `refund_network_unavailable` | Remboursement impossible par Technas : rembourser le client autrement, prévenir Technas |
 | `provider_unavailable`, `unavailable`, `network_error` | Panne passagère : refaire le même appel |
 | `rate_limited` | Ralentir, réessayer |
+| `kyc_required` | Ne pas réessayer : proposer la carte ou expliquer au client que le mobile money n'est pas disponible pour le moment ; prévenir le responsable (`$e->details['consoleUrl']`) |
+| `contract_required` | Ne pas réessayer : le responsable accepte le contrat `$e->details['version']` sur `$e->details['consoleUrl']` |
 
 ## Vérifier l'intégration
 

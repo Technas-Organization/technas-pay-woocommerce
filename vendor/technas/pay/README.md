@@ -2,7 +2,7 @@
 
 Encaissez des paiements mobile money et par carte via Technas depuis un serveur PHP : Laravel, Symfony, Slim, ou PHP sans framework.
 
-**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais de votre compte carte). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer.
+**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais de votre compte carte, selon le pays : environ 1,5 % + 0,25 € en Europe). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer.
 
 Devises et pays, pièces demandées, versements, comparaison avec les autres prestataires : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
 
@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.1
+composer require technas/pay:^0.2
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -69,7 +69,7 @@ http_response_code($result['status']); // 400 si la signature est refusée
 echo json_encode($result['body']);
 ```
 
-Fonctions disponibles : `onCompleted`, `onFailed` (pas définitif), `onExpired` (définitif), `onRefund`, `onTopUp`, `onPayoutDestination`, `onBalanceConverted`, `onFxModeUpdated`, `onCardAccountUpdated`. Une exception dans votre fonction doit remonter : Technas relivrera. Exemples : [examples/](examples).
+Fonctions disponibles : `onCompleted`, `onFailed` (pas définitif), `onExpired` (définitif), `onRefund`, `onTopUp`, `onPayoutDestination`, `onBalanceConverted`, `onFxModeUpdated`, `onCardAccountUpdated`, `onKycRequired` (seuil d'identité, voir plus bas). Une exception dans votre fonction doit remonter : Technas relivrera. Exemples : [examples/](examples).
 
 ## 4. Pour une app mobile : les routes toutes faites
 
@@ -108,6 +108,7 @@ Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /p
 | `setCountryRules(allowed:, excluded:)` | Où vous vendez |
 | `getPayoutNetworks($country)`, `getPayoutDestination()`, `setPayoutDestination(...)` | Numéro de reversement |
 | `startCardOnboarding(...)`, `getCardAccount()`, `getCardDashboardLink()` | Compte carte (puis le tableau de bord de votre compte carte) |
+| `getAccountKyc()` | Seuil d'identité du compte (à montrer au marchand) |
 | `verifyWebhook($raw, $sig)`, `handleWebhook(...)`, `createTestWebhook(...)` | Avis signés |
 | `simulateTestPayment($id, 'completed'\|'failed'\|'expired')` | Jouer le payeur en test |
 
@@ -125,7 +126,22 @@ try {
 }
 ```
 
+- `kyc_required` (409) : seuil d'identité atteint, nouveaux paiements mobile money refusés. `$e->details['consoleUrl']` et `$e->details['reason']` (`amount` ou `duration`). Proposez la carte ou dites au client que le mobile money n'est pas disponible pour le moment ; ne réessayez pas.
+- `contract_required` (409) : un contrat est à accepter dans la console. `$e->details['consoleUrl']` et `$e->details['version']`. Ne réessayez pas.
+
 Codes et conduite à tenir : [AGENTS.md](AGENTS.md#erreurs).
+
+## Seuil d'identité
+
+En réel, un compte sans pièce d'identité vérifiée voit ses **nouveaux** paiements mobile money refusés (`kyc_required`) au-delà de 1 000 000 F CFA encaissés en cumul, ou 30 jours après son premier paiement réel encaissé. Rien de ce qui existe n'est bloqué : paiement en cours, remboursement, reversement, lecture. La carte n'est pas concernée. Le responsable du compte dépose sa pièce dans la console (`consoleUrl`).
+
+```php
+$kyc = $pay->getAccountKyc(); // à montrer au marchand, jamais au client final
+// $kyc->stage : ok | soon | blocked | verified | not_applicable
+// $kyc->collectedXof, $kyc->thresholdXof, $kyc->graceDays, $kyc->deadline, $kyc->consoleUrl
+```
+
+Les chiffres viennent de l'API : ne les écrivez jamais en dur. L'avis `account.kyc_required` (`onKycRequired`, contenu dans `$e->kycRequired`) arrive à 80 % du seuil, 7 jours avant l'échéance, puis au premier refus : prévenez le responsable. Sur l'erreur `kyc_required`, proposez la carte ou dites au client que le paiement mobile money n'est pas disponible pour le moment ; ne réessayez pas.
 
 ## La règle de relance
 

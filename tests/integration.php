@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.1.2', '>='), 'M1 : le SDK embarqué est au moins 0.1.2 (durcie en 0.1.1, kind « card » en 0.1.2)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.2.0', '>='), 'M1 : le SDK embarqué est au moins 0.2.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -296,7 +296,77 @@ update_option('woocommerce_currency', 'XOF');
 $rk = ['id' => 're_c', 'payment_id' => 'pay_c', 'payment_reference' => 'wc-1-card-1', 'amount' => 12.5, 'currency' => 'EUR', 'status' => 'completed'];
 tp_check(\TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'stripe'])->kind === 'card' && \TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'card'])->kind === 'card', 'remboursement carte : kind « card », ancien « stripe » lu comme « card » (SDK embarqué)');
 
-// 12. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).
+// 12. Seuil d'identité : ligne des réglages et notice (clé tps_live_ seulement), avis account.kyc_required,
+//     refus kyc_required au paiement (message neutre au client, note de journal pour le marchand).
+$console = 'https://pay.technas.fr/console/identite';
+$kyc_soon = ['applies' => true, 'stage' => 'soon', 'level' => 'none', 'days_elapsed' => 12, 'warn_from_xof' => 800000, 'warn_from_date' => null,
+    'collected_xof' => 812500, 'threshold_xof' => 1000000, 'grace_days' => 30, 'first_collected_at' => '2026-11-03T10:00:00Z',
+    'deadline' => '2026-12-03T10:00:00Z', 'waiver_until' => null, 'blocked' => false, 'reason' => null, 'console_url' => $console];
+$kyc_html = function () use ($mm): string {
+    ob_start();
+    $mm->admin_options();
+    return (string) ob_get_clean();
+};
+$kyc_notice = function (): string {
+    ob_start();
+    Technas_Pay_WC::kyc_admin_notice();
+    return (string) ob_get_clean();
+};
+$calls = count($fake->calls);
+tp_check(!str_contains($kyc_html(), 'technas-pay-kyc') && count($fake->calls) === $calls, 'seuil : clé de test, aucune ligne « Seuil d\'identité » et aucun appel à Technas');
+Technas_Pay_WC::save_secret('tps_live_pk_ci.' . TP_WEBHOOK_SECRET);
+$fake->queue[] = [200, $kyc_soon];
+$html = $kyc_html();
+$sent = end($fake->calls);
+tp_check($sent['method'] === 'GET' && $sent['path'] === '/v1/account/kyc' && $sent['auth'] === 'Bearer pk_ci', 'seuil : clé tps_live_, lu par getAccountKyc (GET /v1/account/kyc)', $sent);
+tp_check(str_contains($html, 'technas-pay-kyc') && str_contains($html, number_format_i18n(812500)) && str_contains($html, number_format_i18n(1000000)) && str_contains($html, $console)
+    && str_contains($html, wp_date(get_option('date_format'), strtotime('2026-12-03T10:00:00Z'))), 'seuil : la ligne des réglages montre l\'encaissé, le seuil, l\'échéance et le lien vers la console');
+$calls = count($fake->calls);
+$kyc_html();
+tp_check(count($fake->calls) === $calls && is_array(get_transient(Technas_Pay_WC::KYC_TRANSIENT)), 'seuil : gardé une heure dans un transient (pas de second appel)');
+tp_check(has_action('admin_notices', [Technas_Pay_WC::class, 'kyc_admin_notice']) !== false, 'seuil : la notice est branchée sur admin_notices');
+wp_set_current_user(1);
+$notice = $kyc_notice();
+tp_check(str_contains($notice, 'notice-warning') && str_contains($notice, number_format_i18n(812500)) && str_contains($notice, $console), 'seuil : stage « soon », notice d\'avertissement pour un administrateur', $notice);
+wp_set_current_user(0);
+tp_check($kyc_notice() === '', 'seuil : pas de notice sans le droit manage_woocommerce');
+wp_set_current_user(1);
+Technas_Pay_WC::store_kyc(\TechnasPay\Model\AccountKyc::fromApi(['stage' => 'ok'] + $kyc_soon));
+tp_check($kyc_notice() === '', 'seuil : stage « ok », aucune notice');
+$calls = count($fake->calls);
+[$bk, $sk] = tp_signed_event('account.kyc_required', ['reason' => 'blocked', 'collected_xof' => 1004000, 'threshold_xof' => 1000000, 'deadline' => '2026-12-03T10:00:00Z', 'blocked' => true, 'console_url' => $console]);
+$notes_before = count(wc_get_order_notes(['order_id' => $oid]));
+tp_check(Technas_Pay_Webhook::handle($bk, $sk)[0] === 200, 'avis account.kyc_required signé : acquitté (200)');
+$cached = get_transient(Technas_Pay_WC::KYC_TRANSIENT);
+tp_check(is_array($cached) && $cached['stage'] === 'blocked' && $cached['collected_xof'] === 1004000 && $cached['blocked'] === true, 'avis account.kyc_required : le transient est mis à jour (bloqué, encaissé)', $cached);
+tp_check(count($fake->calls) === $calls && count(wc_get_order_notes(['order_id' => $oid])) === $notes_before, 'avis account.kyc_required : rien d\'autre (aucun appel, aucune commande touchée)');
+$notice = $kyc_notice();
+tp_check(str_contains($notice, 'notice-error') && str_contains($notice, $console), 'seuil : stage « blocked », notice d\'erreur pour un administrateur', $notice);
+wp_set_current_user(0);
+$logged = [];
+$log_filter = function ($message) use (&$logged) {
+    $logged[] = (string) $message;
+    return $message;
+};
+add_filter('woocommerce_logger_log_message', $log_filter);
+$ok = tp_order();
+$fake->queue[] = [409, ['code' => 'kyc_required', 'message' => 'm', 'console_url' => $console, 'reason' => 'amount']];
+$r = $mm->process_payment($ok->get_id());
+remove_filter('woocommerce_logger_log_message', $log_filter);
+$neutral = 'Mobile money payment is not available right now. Please choose card or try again later.';
+tp_check($r['result'] === 'failure', 'refus kyc_required au paiement : la commande n\'est pas envoyée vers Technas', $r);
+tp_check(Technas_Pay_WC::customer_message(new \TechnasPay\TechnasPayException('kyc_required', 'm', 409, null, ['consoleUrl' => $console])) === $neutral, 'refus kyc_required : message client neutre, sans rien du compte du marchand');
+$mo = new MO();
+$mo->import_from_file(TECHNAS_PAY_WC_DIR . '/languages/technas-pay-woocommerce-fr_FR.mo');
+tp_check($mo->translate($neutral) === 'Le paiement mobile money n\'est pas disponible pour le moment. Choisissez la carte ou réessayez plus tard.', 'refus kyc_required : message traduit en français (.mo recompilé)', $mo->translate($neutral));
+tp_check($mo->translate('Identity threshold') === 'Seuil d\'identité', 'seuil : libellé de la ligne traduit en français (.mo recompilé)');
+$journal = implode("\n", $logged);
+tp_check(str_contains($journal, 'kyc_required') && str_contains($journal, $console), 'refus kyc_required : note de journal pour le marchand, avec le lien vers la console', $logged);
+tp_check(get_transient(Technas_Pay_WC::KYC_TRANSIENT) === false, 'refus kyc_required : l\'état gardé est relu au prochain affichage');
+Technas_Pay_WC::save_secret(TP_SECRET);
+tp_check(get_transient(Technas_Pay_WC::KYC_TRANSIENT) === false && Technas_Pay_WC::account_kyc() === null, 'seuil : nouvelle clé (test), état effacé et plus rien de lu');
+
+// 13. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).
 wp_mkdir_p($out_dir);
 $h = tp_order();
 [$hid, $href] = tp_start($fake, $mm, $h, 'pay_http');

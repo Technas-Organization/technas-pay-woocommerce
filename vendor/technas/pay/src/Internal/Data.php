@@ -71,6 +71,26 @@ final class Data
         return is_int($v) || is_float($v) ? $v : null;
     }
 
+    /**
+     * Un entier ; un nombre décimal entier (`5000.0`) est accepté, rien d'autre.
+     *
+     * @param array<mixed> $a
+     */
+    public static function int(array $a, string $k): int
+    {
+        return self::nint($a, $k) ?? 0;
+    }
+
+    /** @param array<mixed> $a */
+    public static function nint(array $a, string $k): ?int
+    {
+        $v = $a[$k] ?? null;
+        if (is_int($v)) {
+            return $v;
+        }
+        return is_float($v) && is_finite($v) && floor($v) === $v && abs($v) < 2 ** 53 ? (int) $v : null;
+    }
+
     /** @param array<mixed> $a */
     public static function bool(array $a, string $k): bool
     {

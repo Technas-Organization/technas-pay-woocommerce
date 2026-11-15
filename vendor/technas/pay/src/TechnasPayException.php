@@ -10,7 +10,9 @@ use TechnasPay\Internal\Data;
  * Une erreur rendue par Technas, ou détectée avant tout appel (`status` vaut alors 0).
  *
  * Testez `$e->errorCode` (stable), jamais le message : `payment_expired`, `reference_conflict`,
- * `risk_not_accepted`, `card_account_not_ready`, `insufficient_balance`…
+ * `risk_not_accepted`, `card_account_not_ready`, `insufficient_balance`, `kyc_required`…
+ * `kyc_required` (409) : `details['consoleUrl']`, `details['reason']` (`amount` | `duration`) ;
+ * `contract_required` (409) : `details['consoleUrl']`, `details['version']`. Ni l'un ni l'autre ne se rejoue.
  * `retryable()` : refaire LE MÊME appel, mêmes valeurs, a du sens.
  * Le message ne cite jamais le secret.
  */
@@ -18,7 +20,7 @@ final class TechnasPayException extends \RuntimeException
 {
     /**
      * @param list<array{field: string, message: string}>|null $errors
-     * @param array{missingAmount?: int|float, currency?: string, refundableAmount?: int|float, reason?: string, risk?: string, accountStatus?: string} $details
+     * @param array{missingAmount?: int|float, currency?: string, refundableAmount?: int|float, reason?: string, risk?: string, accountStatus?: string, consoleUrl?: string, version?: string} $details
      */
     public function __construct(
         public readonly string $errorCode,
@@ -47,7 +49,7 @@ final class TechnasPayException extends \RuntimeException
                 $details[$to] = $n;
             }
         }
-        foreach (['currency' => 'currency', 'reason' => 'reason', 'risk' => 'risk', 'account_status' => 'accountStatus'] as $from => $to) {
+        foreach (['currency' => 'currency', 'reason' => 'reason', 'risk' => 'risk', 'account_status' => 'accountStatus', 'console_url' => 'consoleUrl', 'version' => 'version'] as $from => $to) {
             if (($v = Data::nstr($d, $from)) !== null) {
                 $details[$to] = $v;
             }

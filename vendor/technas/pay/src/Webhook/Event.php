@@ -6,6 +6,7 @@ namespace TechnasPay\Webhook;
 
 use TechnasPay\Internal\Data;
 use TechnasPay\Model\CardAccount;
+use TechnasPay\Model\KycRequired;
 use TechnasPay\Model\Payment;
 use TechnasPay\Model\Refund;
 
@@ -27,6 +28,8 @@ final class Event
         public readonly ?Refund $refund = null,
         /** `card_account.updated`. */
         public readonly ?CardAccount $cardAccount = null,
+        /** `account.kyc_required` : seuil d'identité proche ou atteint. */
+        public readonly ?KycRequired $kycRequired = null,
     ) {
     }
 
@@ -49,6 +52,9 @@ final class Event
         }
         if ($t === 'card_account.updated') {
             return new self(...$base, cardAccount: CardAccount::fromApi($d));
+        }
+        if ($t === 'account.kyc_required') {
+            return new self(...$base, kycRequired: KycRequired::fromApi($d));
         }
         // payout_destination.*, balance.topped_up, balance.converted, fx_mode.updated, types inconnus : `data`.
         return new self(...$base);
