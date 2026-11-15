@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace TechnasPay\App;
 
+use TechnasPay\Internal\Data as D;
 use TechnasPay\Model\Payment;
 use TechnasPay\Status;
 use TechnasPay\TechnasPay;
@@ -66,8 +67,7 @@ final class AppRoutes
 
     private function resolve(string $orderId, mixed $user): ?AppOrder
     {
-        $raw = ($this->resolveOrder)($orderId, $user);
-        return $raw === null ? null : AppOrder::from($raw);
+        return AppOrder::from(($this->resolveOrder)($orderId, $user));
     }
 
     private function start(string $orderId, AppOrder $order, string $method): Payment
@@ -122,8 +122,12 @@ final class AppRoutes
         if ($req->rawBody === '') {
             return [];
         }
-        $d = json_decode($req->rawBody, true);
-        return is_array($d) ? $d : null;
+        try {
+            $d = json_decode($req->rawBody, true, 16, JSON_THROW_ON_ERROR);
+        } catch (\JsonException) {
+            return null;
+        }
+        return is_array($d) ? D::asMap($d) : null;
     }
 
     private function cardRoutes(AppRequest $req, string $path): AppResponse
@@ -143,10 +147,12 @@ final class AppRoutes
             if ($b === null) {
                 return self::err(400, 'invalid_request', 'Corps JSON illisible');
             }
-            if (!is_string($b['returnUrl'] ?? null) || !is_string($b['refreshUrl'] ?? null)) {
+            $returnUrl = D::nstr($b, 'returnUrl');
+            $refreshUrl = D::nstr($b, 'refreshUrl');
+            if ($returnUrl === null || $refreshUrl === null) {
                 return self::err(400, 'invalid_request', 'returnUrl et refreshUrl sont obligatoires');
             }
-            $link = $this->pay->startCardOnboarding($b['returnUrl'], $b['refreshUrl'], $b['country'] ?? null, $b['email'] ?? null, $b['businessType'] ?? null);
+            $link = $this->pay->startCardOnboarding($returnUrl, $refreshUrl, D::nstr($b, 'country'), D::nstr($b, 'email'), D::nstr($b, 'businessType'));
             return new AppResponse(200, ['url' => $link->url, 'kind' => $link->kind, 'expires_at' => $link->expiresAt, 'account' => $link->account->toAppJson()]);
         } catch (TechnasPayException $e) {
             return self::fromPayError($e);
@@ -171,7 +177,8 @@ final class AppRoutes
             return $this->cardRoutes($req, $path);
         }
 
-        $isPayment = preg_match('#^/payments/([^/]+)$#', $path, $pm) === 1;
+        $paymentId = preg_match('#^/payments/([^/]+)$#', $path, $pm) === 1 ? rawurldecode($pm[1]) : '';
+        $isPayment = $paymentId !== '';
         $known = ($method === 'GET' && ($path === '/methods' || $isPayment)) || ($method === 'POST' && $path === '/payments');
         if (!$known) {
             return self::err(404, 'not_found', 'Route inconnue');
@@ -184,7 +191,7 @@ final class AppRoutes
 
         try {
             if ($path === '/methods') {
-                $orderId = (string) ($req->query['orderId'] ?? '');
+                $orderId = $req->query['orderId'] ?? '';
                 if ($orderId === '') {
                     return self::err(400, 'invalid_request', 'orderId manquant');
                 }
@@ -227,7 +234,7 @@ final class AppRoutes
 
             // GET /payments/{id} : seulement si la commande de ce paiement est à cet utilisateur.
             try {
-                $payment = $this->pay->getPayment(rawurldecode($pm[1]));
+                $payment = $this->pay->getPayment($paymentId);
             } catch (TechnasPayException $e) {
                 if ($e->errorCode === 'payment_not_found') {
                     return self::err(404, 'payment_not_found', 'Paiement introuvable');

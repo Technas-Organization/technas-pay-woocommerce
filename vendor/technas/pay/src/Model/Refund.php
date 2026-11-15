@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TechnasPay\Model;
 
+use TechnasPay\Internal\Data as D;
+
 final class Refund
 {
     public function __construct(
@@ -31,15 +33,15 @@ final class Refund
     ) {
     }
 
-    /** @param array<string, mixed> $r */
+    /** @param array<mixed> $r */
     public static function fromApi(array $r): self
     {
         return new self(
-            (string) ($r['id'] ?? ''), (string) ($r['payment_id'] ?? ''), (string) ($r['payment_reference'] ?? ''),
-            $r['amount'] ?? 0, $r['sent_amount'] ?? 0, $r['fee'] ?? 0, (string) ($r['fees'] ?? 'partner'),
-            $r['balance_debit'] ?? 0, (string) ($r['currency'] ?? ''), (string) ($r['status'] ?? ''),
-            $r['failure'] ?? null, (string) ($r['kind'] ?? 'payout'), $r['method'] ?? null, $r['note'] ?? null,
-            $r['recorded_by'] ?? null, $r['created_at'] ?? null,
+            D::str($r, 'id'), D::str($r, 'payment_id'), D::str($r, 'payment_reference'),
+            D::num($r, 'amount'), D::num($r, 'sent_amount'), D::num($r, 'fee'), D::str($r, 'fees', 'partner'),
+            D::num($r, 'balance_debit'), D::str($r, 'currency'), D::str($r, 'status'),
+            D::nstr($r, 'failure'), D::str($r, 'kind', 'payout'), D::nstr($r, 'method'), D::nstr($r, 'note'),
+            D::nstr($r, 'recorded_by'), D::nstr($r, 'created_at'),
         );
     }
 }

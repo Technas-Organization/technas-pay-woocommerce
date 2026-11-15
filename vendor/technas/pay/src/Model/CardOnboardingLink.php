@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TechnasPay\Model;
 
+use TechnasPay\Internal\Data as D;
+
 final class CardOnboardingLink
 {
     public function __construct(
@@ -16,9 +18,9 @@ final class CardOnboardingLink
     ) {
     }
 
-    /** @param array<string, mixed> $r */
+    /** @param array<mixed> $r */
     public static function fromApi(array $r): self
     {
-        return new self((string) $r['url'], (string) $r['kind'], $r['expires_at'] ?? null, CardAccount::fromApi($r['account'] ?? []));
+        return new self(D::str($r, 'url'), D::str($r, 'kind'), D::nstr($r, 'expires_at'), CardAccount::fromApi(D::map($r, 'account')));
     }
 }

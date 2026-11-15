@@ -26,6 +26,7 @@ final class Psr15Handler implements RequestHandlerInterface
     ) {
     }
 
+    #[\Override]
     public function handle(ServerRequestInterface $request): ResponseInterface
     {
         $prefix = '/' . trim($this->basePath, '/');
@@ -35,7 +36,7 @@ final class Psr15Handler implements RequestHandlerInterface
         }
         $headers = [];
         foreach ($request->getHeaders() as $name => $values) {
-            $headers[strtolower((string) $name)] = (string) ($values[0] ?? '');
+            $headers[strtolower((string) $name)] = $values[0] ?? '';
         }
         $body = $request->getBody();
         if ($body->isSeekable()) {
@@ -44,7 +45,7 @@ final class Psr15Handler implements RequestHandlerInterface
         $r = $this->routes->handle(new AppRequest(
             $request->getMethod(),
             $path,
-            array_map('strval', $request->getQueryParams()),
+            self::query($request->getQueryParams()),
             $headers,
             (string) $body,
             $request,
@@ -52,5 +53,17 @@ final class Psr15Handler implements RequestHandlerInterface
         return $this->responses->createResponse($r->status)
             ->withHeader('Content-Type', 'application/json')
             ->withBody($this->streams->createStream($r->json()));
+    }
+
+    /** @return array<string, string> */
+    private static function query(mixed $params): array
+    {
+        $out = [];
+        foreach (is_array($params) ? $params : [] as $k => $v) {
+            if (is_string($k) && (is_string($v) || is_int($v))) {
+                $out[$k] = (string) $v;
+            }
+        }
+        return $out;
     }
 }

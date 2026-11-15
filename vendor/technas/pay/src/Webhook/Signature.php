@@ -36,7 +36,7 @@ final class Signature
             throw new WebhookVerificationException('Signature invalide');
         }
         try {
-            $raw = json_decode($rawBody, true, 512, JSON_THROW_ON_ERROR);
+            $raw = json_decode($rawBody, true, 64, JSON_THROW_ON_ERROR);
         } catch (\JsonException) {
             throw new WebhookVerificationException('Webhook illisible');
         }

@@ -68,7 +68,9 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 	 * écrite dans les réglages WooCommerce. Champ vide = garder la clé enregistrée.
 	 */
 	public function validate_technas_secret_field( string $key, $value ): string {
-		$value = trim( sanitize_text_field( wp_unslash( (string) $value ) ) );
+		// Pas de sanitize_text_field : il retirerait des « %xx » d'une clé. Le motif strict de
+		// Technas_Pay_WC::SECRET_PATTERN (aucun espace, aucun caractère de contrôle) fait office de filtre.
+		$value = trim( wp_unslash( (string) $value ) );
 		if ( $value !== '' && ! Technas_Pay_WC::save_secret( $value ) ) {
 			WC_Admin_Settings::add_error( __( 'This Technas Pay key looks wrong: it must start with tps_test_ or tps_live_. Copy it again.', 'technas-pay-woocommerce' ) );
 		}

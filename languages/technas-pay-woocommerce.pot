@@ -130,3 +130,21 @@ msgstr ""
 msgid "You are not allowed to refund orders."
 msgstr ""
 
+msgid "Technas Pay: unexpected payment page address, not opened."
+msgstr ""
+
+msgid "Technas Pay returned a different refund amount. Check the order before refunding again."
+msgstr ""
+
+msgid "Technas Pay: a SECOND payment was received for this already paid order (%1$s %2$s, reference %3$s). Refund it to the customer."
+msgstr ""
+
+msgid "Technas Pay TEST payment: no money was received. Do not ship. Switch to a tps_live_ key to take real payments."
+msgstr ""
+
+msgid "Technas Pay is in TEST mode (tps_test_ key): no real money is taken, and test orders stay on hold. Switch to a tps_live_ key before selling."
+msgstr ""
+
+msgid "%s (TEST, no real payment)"
+msgstr ""
+

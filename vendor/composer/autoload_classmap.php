@@ -15,6 +15,7 @@ return array(
     'TechnasPay\\Bridge\\SymfonyBridge' => $vendorDir . '/technas/pay/src/Bridge/SymfonyBridge.php',
     'TechnasPay\\Http\\CurlTransport' => $vendorDir . '/technas/pay/src/Http/CurlTransport.php',
     'TechnasPay\\Http\\Transport' => $vendorDir . '/technas/pay/src/Http/Transport.php',
+    'TechnasPay\\Internal\\Data' => $vendorDir . '/technas/pay/src/Internal/Data.php',
     'TechnasPay\\Model\\CardAccount' => $vendorDir . '/technas/pay/src/Model/CardAccount.php',
     'TechnasPay\\Model\\CardOnboardingLink' => $vendorDir . '/technas/pay/src/Model/CardOnboardingLink.php',
     'TechnasPay\\Model\\Payment' => $vendorDir . '/technas/pay/src/Model/Payment.php',

@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace TechnasPay;
 
+use TechnasPay\Internal\Data;
+
 /**
  * Une erreur rendue par Technas, ou détectée avant tout appel (`status` vaut alors 0).
  *
@@ -12,10 +14,10 @@ namespace TechnasPay;
  * `retryable()` : refaire LE MÊME appel, mêmes valeurs, a du sens.
  * Le message ne cite jamais le secret.
  */
-class TechnasPayException extends \RuntimeException
+final class TechnasPayException extends \RuntimeException
 {
     /**
-     * @param array<int, array{field?: string, message?: string}>|null $errors
+     * @param list<array{field: string, message: string}>|null $errors
      * @param array{missingAmount?: int|float, currency?: string, refundableAmount?: int|float, reason?: string, risk?: string, accountStatus?: string} $details
      */
     public function __construct(
@@ -36,23 +38,27 @@ class TechnasPayException extends \RuntimeException
             || $this->status >= 500;
     }
 
-    /** @param mixed $data */
-    public static function fromResponse(int $status, $data): self
+    public static function fromResponse(int $status, mixed $data): self
     {
-        $d = is_array($data) ? $data : [];
+        $d = Data::asMap($data);
         $details = [];
-        foreach (['missing_amount' => 'missingAmount', 'currency' => 'currency', 'refundable_amount' => 'refundableAmount',
-            'reason' => 'reason', 'risk' => 'risk', 'account_status' => 'accountStatus'] as $from => $to) {
-            if (array_key_exists($from, $d) && $d[$from] !== null) {
-                $details[$to] = $d[$from];
+        foreach (['missing_amount' => 'missingAmount', 'refundable_amount' => 'refundableAmount'] as $from => $to) {
+            if (($n = Data::nnum($d, $from)) !== null) {
+                $details[$to] = $n;
             }
         }
-        return new self(
-            is_string($d['code'] ?? null) ? $d['code'] : 'request_failed',
-            is_string($d['message'] ?? null) ? $d['message'] : "Réponse HTTP $status",
-            $status,
-            is_array($d['errors'] ?? null) ? $d['errors'] : null,
-            $details,
-        );
+        foreach (['currency' => 'currency', 'reason' => 'reason', 'risk' => 'risk', 'account_status' => 'accountStatus'] as $from => $to) {
+            if (($v = Data::nstr($d, $from)) !== null) {
+                $details[$to] = $v;
+            }
+        }
+        $errors = null;
+        if (is_array($d['errors'] ?? null)) {
+            $errors = [];
+            foreach (Data::asMaps($d['errors']) as $e) {
+                $errors[] = ['field' => Data::str($e, 'field'), 'message' => Data::str($e, 'message')];
+            }
+        }
+        return new self(Data::str($d, 'code', 'request_failed'), Data::str($d, 'message', "Réponse HTTP $status"), $status, $errors, $details);
     }
 }

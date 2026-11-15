@@ -30,6 +30,7 @@ class ComposerStaticInita703f7aa200b583da87e7ac3125ab9fa
         'TechnasPay\\Bridge\\SymfonyBridge' => __DIR__ . '/..' . '/technas/pay/src/Bridge/SymfonyBridge.php',
         'TechnasPay\\Http\\CurlTransport' => __DIR__ . '/..' . '/technas/pay/src/Http/CurlTransport.php',
         'TechnasPay\\Http\\Transport' => __DIR__ . '/..' . '/technas/pay/src/Http/Transport.php',
+        'TechnasPay\\Internal\\Data' => __DIR__ . '/..' . '/technas/pay/src/Internal/Data.php',
         'TechnasPay\\Model\\CardAccount' => __DIR__ . '/..' . '/technas/pay/src/Model/CardAccount.php',
         'TechnasPay\\Model\\CardOnboardingLink' => __DIR__ . '/..' . '/technas/pay/src/Model/CardOnboardingLink.php',
         'TechnasPay\\Model\\Payment' => __DIR__ . '/..' . '/technas/pay/src/Model/Payment.php',
