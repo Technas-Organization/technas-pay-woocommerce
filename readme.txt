@@ -4,7 +4,7 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.2.0
+Stable tag: 0.2.1
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -29,6 +29,10 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.2.1 =
+* The account.kyc_required notification now carries the threshold stage and block reason: the "Identity threshold" row and the admin notice use them as sent. Older notifications without them are still understood.
+* Technas Pay PHP SDK 0.2.1.
 
 = 0.2.0 =
 * Identity threshold: "Identity threshold" row in the Mobile money settings (collected, threshold, deadline, console link; tps_live_ key only), admin notice when the threshold is close or reached, kept up to date by the account.kyc_required notification.

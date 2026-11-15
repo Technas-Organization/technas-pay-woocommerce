@@ -252,8 +252,21 @@ final class ClientTest extends TestCase
         self::assertInstanceOf(KycRequired::class, $k);
         self::assertSame(['amount_80', 812500, 1000000, '2026-12-03T10:00:00Z', false, 'https://pay.technas.fr/console/identite'],
             [$k->reason, $k->collectedXof, $k->thresholdXof, $k->deadline, $k->blocked, $k->consoleUrl]);
+        // Avis plus ancien, sans les champs de GET /v1/account/kyc : ils restent nuls.
+        self::assertSame([null, null, null, null, null], [$k->stage, $k->blockReason, $k->daysElapsed, $k->graceDays, $k->firstCollectedAt]);
         self::assertNull($r['event']?->payment);
         self::assertSame(400, $pay->handleWebhook($body, Signature::sign($body, 'autre'), $h)['status']);
+
+        // Avis complet : les champs de GET /v1/account/kyc sont tous lus.
+        $body = json_encode(['id' => 'evt_k2', 'type' => 'account.kyc_required', 'created_at' => 'x', 'data' => [
+            'reason' => 'blocked', 'collected_xof' => 1000000, 'threshold_xof' => 1000000, 'deadline' => null,
+            'blocked' => true, 'console_url' => 'https://pay.technas.fr/console/identite',
+            'stage' => 'blocked', 'block_reason' => 'amount', 'days_elapsed' => 12, 'grace_days' => 30,
+            'first_collected_at' => '2026-11-03T10:00:00Z']]);
+        self::assertSame(200, $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h)['status']);
+        $k = $seen[1];
+        self::assertSame(['blocked', true, 'blocked', 'amount', 12, 30, '2026-11-03T10:00:00Z'],
+            [$k->reason, $k->blocked, $k->stage, $k->blockReason, $k->daysElapsed, $k->graceDays, $k->firstCollectedAt]);
     }
 
     public function testRefusSeuilDIdentiteEtContrat(): void

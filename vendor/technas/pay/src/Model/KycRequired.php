@@ -12,6 +12,10 @@ use TechnasPay\Internal\Data as D;
  * `reason` : `amount_80` (80 % du seuil encaissés), `deadline_7d` (échéance dans 7 jours) ou
  * `blocked` (premier refus : les nouveaux paiements mobile money sont refusés). Une valeur que
  * cette version ne connaît pas est gardée telle quelle. Le responsable dépose sa pièce sur `consoleUrl`.
+ *
+ * Champs de `GET /v1/account/kyc` repris par l'avis, tous FACULTATIFS (`null` sur un avis plus ancien) :
+ * `stage` (`ok`, `soon`, `blocked`, `verified`, `not_applicable`), `blockReason` (`amount`,
+ * `duration` ou `null`), `daysElapsed`, `graceDays`, `firstCollectedAt`. `reason` reste le DÉCLENCHEUR de l'avis.
  */
 final class KycRequired
 {
@@ -22,6 +26,11 @@ final class KycRequired
         public readonly ?string $deadline,
         public readonly bool $blocked,
         public readonly string $consoleUrl,
+        public readonly ?string $stage = null,
+        public readonly ?string $blockReason = null,
+        public readonly ?int $daysElapsed = null,
+        public readonly ?int $graceDays = null,
+        public readonly ?string $firstCollectedAt = null,
     ) {
     }
 
@@ -31,6 +40,8 @@ final class KycRequired
         return new self(
             D::str($r, 'reason'), D::int($r, 'collected_xof'), D::int($r, 'threshold_xof'),
             D::nstr($r, 'deadline'), D::bool($r, 'blocked'), D::str($r, 'console_url'),
+            D::nstr($r, 'stage'), D::nstr($r, 'block_reason'), D::nint($r, 'days_elapsed'),
+            D::nint($r, 'grace_days'), D::nstr($r, 'first_collected_at'),
         );
     }
 }

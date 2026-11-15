@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1 — 2026-11-15
+
+- Avis `account.kyc_required` : `KycRequired` lit aussi `stage`, `blockReason`, `daysElapsed`, `graceDays` et `firstCollectedAt` (champs de `GET /v1/account/kyc`), tous facultatifs : `null` sur un avis qui ne les porte pas. `reason` reste le déclencheur de l'avis.
+
 ## 0.2.0 — 2026-11-15
 
 - Seuil d'identité : `getAccountKyc()` (`GET /v1/account/kyc`) rend un `AccountKyc` typé (`stage`, `level`, `collectedXof`, `thresholdXof`, `graceDays`, `deadline`, `consoleUrl`…). Les valeurs inconnues de `stage`, `level` et `reason` sont gardées telles quelles.
