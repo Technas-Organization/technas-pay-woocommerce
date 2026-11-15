@@ -124,3 +124,9 @@ msgstr ""
 msgid "Technas Pay refund update: %1$s %2$s, %3$s."
 msgstr ""
 
+msgid "Saved: %s. Paste a new key to replace it."
+msgstr ""
+
+msgid "You are not allowed to refund orders."
+msgstr ""
+

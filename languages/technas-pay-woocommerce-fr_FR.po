@@ -125,3 +125,9 @@ msgstr "Technas Pay : le lien de paiement a expiré, rien n'a été payé. Le cl
 msgid "Technas Pay refund update: %1$s %2$s, %3$s."
 msgstr "Remboursement Technas Pay : %1$s %2$s, %3$s."
 
+msgid "Saved: %s. Paste a new key to replace it."
+msgstr "Enregistrée : %s. Collez une nouvelle clé pour la remplacer."
+
+msgid "You are not allowed to refund orders."
+msgstr "Vous n'avez pas le droit de rembourser des commandes."
+

@@ -1,4 +1,6 @@
 <?php
+
+defined('ABSPATH') || exit; // joué par `wp eval-file`, jamais servi par le web
 /**
  * Test d'intégration, joué DANS un vrai WordPress + WooCommerce (wp-env, en CI) :
  *
@@ -78,14 +80,17 @@ $phase = $args[0] ?? 'interne';
 
 // --- Réglages, comme un marchand les poserait ------------------------------------------------------
 update_option('woocommerce_currency', 'XOF');
-update_option('woocommerce_technas_pay_mobile_money_settings', ['enabled' => 'yes', 'title' => 'Mobile money', 'description' => 'Orange Money, MTN…', 'secret' => TP_SECRET]);
+update_option('woocommerce_technas_pay_mobile_money_settings', ['enabled' => 'yes', 'title' => 'Mobile money', 'description' => 'Orange Money, MTN…', 'secret' => '']);
+Technas_Pay_WC::save_secret(TP_SECRET);
 update_option('woocommerce_technas_pay_card_settings', ['enabled' => 'yes', 'title' => 'Carte bancaire', 'description' => 'Carte']);
 WC()->payment_gateways()->init();
 
 if ($phase === 'http') {
     $order_id = (int) file_get_contents("$out_dir/order-http.txt");
     $order = wc_get_order($order_id);
-    tp_check($order->is_paid(), "l'avis signé reçu sur /?wc-api=technas_pay a marqué la commande $order_id payée", $order->get_status());
+    tp_check($order->is_paid(), "l'avis signé reçu sur la route REST a marqué la commande $order_id payée", $order->get_status());
+    $legacy = (int) file_get_contents("$out_dir/order-http-legacy.txt");
+    tp_check(wc_get_order($legacy)->is_paid(), "l'avis signé reçu sur /?wc-api=technas_pay a marqué la commande $legacy payée");
     $bad_id = (int) file_get_contents("$out_dir/order-http-bad.txt");
     tp_check(!wc_get_order($bad_id)->is_paid(), "l'avis mal signé n'a rien payé (commande $bad_id)");
     WP_CLI::success('Intégration HTTP : OK');
@@ -101,7 +106,19 @@ $mm = $gateways['technas_pay_mobile_money'] ?? null;
 $card = $gateways['technas_pay_card'] ?? null;
 tp_check($mm instanceof Technas_Pay_Gateway_Mobile_Money && $card instanceof Technas_Pay_Gateway_Card, 'les deux moyens sont déclarés à WooCommerce');
 tp_check($mm->is_available(), 'mobile money disponible (clé valide, boutique en XOF)');
-tp_check(str_contains(Technas_Pay_WC::webhook_url(), 'technas_pay'), "l'adresse d'avis s'affiche dans les réglages", Technas_Pay_WC::webhook_url());
+tp_check(str_contains(Technas_Pay_WC::webhook_url(), 'technas-pay/v1/webhook'), "l'adresse d'avis (route REST) s'affiche dans les réglages", Technas_Pay_WC::webhook_url());
+
+// 0. Sécurité de la clé : option à part, sans autoload, jamais réaffichée, jamais dans les réglages WooCommerce.
+global $wpdb;
+$autoload = $wpdb->get_var($wpdb->prepare("SELECT autoload FROM {$wpdb->options} WHERE option_name = %s", Technas_Pay_WC::SECRET_OPTION));
+tp_check(in_array($autoload, ['no', 'off'], true), 'la clé n\'est pas chargée à chaque page (autoload désactivé)', $autoload);
+tp_check(!str_contains((string) wp_json_encode(get_option('woocommerce_technas_pay_mobile_money_settings')), 'tps_'), 'la clé n\'est pas dans les réglages WooCommerce');
+ob_start();
+$mm->admin_options();
+$html = (string) ob_get_clean();
+tp_check(!str_contains($html, 'ws_ci_secret') && !str_contains($html, 'pk_ci.'), 'la page de réglages ne réaffiche jamais la clé');
+tp_check(str_contains($html, '…') && str_contains($html, 'tps_test_'), 'seuls le mode et les 4 derniers caractères sont indiqués');
+tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret() === TP_SECRET, 'une clé mal formée est refusée, l\'ancienne reste');
 
 // 1. Payer : le paiement part avec le bon montant, la bonne référence, sans devise (zone CFA).
 $order = tp_order();
@@ -122,6 +139,9 @@ tp_check(Technas_Pay_Webhook::handle($body, $sig)[0] === 200 && wc_get_order($oi
 $notes = count(wc_get_order_notes(['order_id' => $oid]));
 Technas_Pay_Webhook::handle($body, $sig);
 tp_check(count(wc_get_order_notes(['order_id' => $oid])) === $notes, 'avis relivré : rien en double');
+tp_check((Technas_Pay_Webhook::handle($body, $sig)[1]['duplicate'] ?? false) === true, 'avis rejoué (même id) : acquitté sans être retraité');
+$old = Signature::sign($body, TP_WEBHOOK_SECRET, time() - 3600);
+tp_check(Technas_Pay_Webhook::handle($body, $old)[0] === 400, 'avis rejoué avec sa vieille signature : refusé (400)');
 
 // 3. Montant différent : la commande ne passe pas payée, elle est mise en attente.
 $o2 = tp_order();
@@ -181,6 +201,12 @@ $h = tp_order();
 file_put_contents("$out_dir/order-http.txt", (string) $h->get_id());
 file_put_contents("$out_dir/webhook-body.json", $hb);
 file_put_contents("$out_dir/webhook-signature.txt", $hs);
+// L'ancienne adresse /?wc-api=technas_pay : un second avis signé, sur une autre commande.
+$h2 = tp_order();
+[$hb2, $hs2] = tp_signed_event('payment.completed', tp_payment(['reference' => $h2->get_id() . '-1', 'status' => 'completed', 'currency' => 'XOF', 'metadata' => ['order_id' => (string) $h2->get_id()]]));
+file_put_contents("$out_dir/order-http-legacy.txt", (string) $h2->get_id());
+file_put_contents("$out_dir/webhook-legacy-body.json", $hb2);
+file_put_contents("$out_dir/webhook-legacy-signature.txt", $hs2);
 $bad = tp_order();
 [$bb] = tp_signed_event('payment.completed', tp_payment(['reference' => $bad->get_id() . '-1', 'status' => 'completed', 'metadata' => ['order_id' => (string) $bad->get_id()]]));
 file_put_contents("$out_dir/order-http-bad.txt", (string) $bad->get_id());
