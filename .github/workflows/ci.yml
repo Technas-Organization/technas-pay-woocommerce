@@ -31,7 +31,7 @@ jobs:
       - name: Dépendances vulnérables
         run: composer audit --locked
       - name: Secrets dans l'historique
-        uses: trufflesecurity/trufflehog@v3.88.0
+        uses: trufflesecurity/trufflehog@v3.99.8
         with:
           version: 3.88.0
           extra_args: --only-verified
