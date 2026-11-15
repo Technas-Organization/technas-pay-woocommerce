@@ -127,6 +127,8 @@ final class Technas_Pay_Webhook {
 				onExpired: static fn ( Event $e ) => self::on_expired( $e ),
 				onRefund: static fn ( Event $e ) => self::on_refund( $e ),
 				onCardAccountUpdated: static fn ( Event $e ) => set_transient( self::CARD_READY_TRANSIENT, $e->cardAccount?->canAcceptPayments ? 'yes' : 'no', HOUR_IN_SECONDS ),
+				// Pas de commande : l'avis met seulement à jour le seuil d'identité gardé.
+				onKycRequired: static fn ( Event $e ) => $e->kycRequired ? Technas_Pay_WC::kyc_from_event( $e->kycRequired ) : null,
 			)
 		);
 	}
