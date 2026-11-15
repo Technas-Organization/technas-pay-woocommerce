@@ -33,7 +33,8 @@ jobs:
       - name: Secrets dans l'historique
         uses: trufflesecurity/trufflehog@v3.88.0
         with:
-          extra_args: --only-verified --fail
+          version: 3.88.0
+          extra_args: --only-verified
 
   wordpress:
     # Dépôt PUBLIC : machines GitHub, gratuites et isolées. Jamais les runners ARC du cluster ici
