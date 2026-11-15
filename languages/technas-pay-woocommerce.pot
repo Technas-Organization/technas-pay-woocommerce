@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Technas Pay for WooCommerce 0.1.0\n"
+"Project-Id-Version: Technas Pay for WooCommerce 0.1.1\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -10,7 +10,7 @@ msgstr ""
 msgid "Card (Technas Pay)"
 msgstr ""
 
-msgid "Bank cards, Apple Pay and Google Pay. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
+msgid "Bank cards, Apple Pay and Google Pay. 1% per successful payment (plus your card account fees), no subscription. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
 msgstr ""
 
 msgid "Bank card"

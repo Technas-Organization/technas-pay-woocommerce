@@ -2,11 +2,11 @@
 
 Encaissez des paiements mobile money et par carte via Technas depuis un serveur PHP : Laravel, Symfony, Slim, ou PHP sans framework.
 
-**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais Stripe de votre compte). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer.
+**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais de votre compte carte). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer.
 
 Devises et pays, pièces demandées, versements, comparaison avec les autres prestataires : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
 
-Vous intégrez avec un assistant de code (Codex, Claude Code…) ? Dites-lui de lire [AGENTS.md](AGENTS.md).
+Vous intégrez avec un assistant de code ? Dites-lui de lire [AGENTS.md](AGENTS.md).
 
 Une boutique WordPress / WooCommerce ? L'extension [`technas-pay-woocommerce`](https://github.com/Technas-Organization/technas-pay-woocommerce) s'installe sans développeur.
 
@@ -107,7 +107,7 @@ Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /p
 | `getFxMode()`, `setFxMode($mode, acceptRisk:)` | Clients hors zone franc CFA (option à risque) |
 | `setCountryRules(allowed:, excluded:)` | Où vous vendez |
 | `getPayoutNetworks($country)`, `getPayoutDestination()`, `setPayoutDestination(...)` | Numéro de reversement |
-| `startCardOnboarding(...)`, `getCardAccount()`, `getCardDashboardLink()` | Compte carte (https://dashboard.stripe.com/ ensuite) |
+| `startCardOnboarding(...)`, `getCardAccount()`, `getCardDashboardLink()` | Compte carte (puis le tableau de bord de votre compte carte) |
 | `verifyWebhook($raw, $sig)`, `handleWebhook(...)`, `createTestWebhook(...)` | Avis signés |
 | `simulateTestPayment($id, 'completed'\|'failed'\|'expired')` | Jouer le payeur en test |
 

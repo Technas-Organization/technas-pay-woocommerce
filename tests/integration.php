@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(TechnasPay\TechnasPay::VERSION === '0.1.1', 'M1 : le SDK embarqué est la version durcie 0.1.1', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.1.2', '>='), 'M1 : le SDK embarqué est au moins 0.1.2 (durcie en 0.1.1, kind « card » en 0.1.2)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -293,6 +293,8 @@ $card->process_payment($o8->get_id());
 $sent = end($fake->calls);
 tp_check($sent['body']['method'] === 'card' && $sent['body']['currency'] === 'EUR' && $sent['body']['amount'] === 12.5 && $sent['body']['reference'] === 'wc-' . $o8->get_id() . '-card-1', 'carte : method, devise, décimales et référence à part', $sent['body']);
 update_option('woocommerce_currency', 'XOF');
+$rk = ['id' => 're_c', 'payment_id' => 'pay_c', 'payment_reference' => 'wc-1-card-1', 'amount' => 12.5, 'currency' => 'EUR', 'status' => 'completed'];
+tp_check(\TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'stripe'])->kind === 'card' && \TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'card'])->kind === 'card', 'remboursement carte : kind « card », ancien « stripe » lu comme « card » (SDK embarqué)');
 
 // 12. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).
 wp_mkdir_p($out_dir);

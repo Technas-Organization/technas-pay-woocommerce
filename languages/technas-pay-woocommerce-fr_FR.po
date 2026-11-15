@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Technas Pay for WooCommerce 0.1.0\n"
+"Project-Id-Version: Technas Pay for WooCommerce 0.1.1\n"
 "Language: fr_FR\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -11,8 +11,8 @@ msgstr ""
 msgid "Card (Technas Pay)"
 msgstr "Carte bancaire (Technas Pay)"
 
-msgid "Bank cards, Apple Pay and Google Pay. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
-msgstr "Cartes bancaires, Apple Pay et Google Pay. Exige un compte carte Technas Pay actif. La clé se règle dans « Mobile money (Technas Pay) »."
+msgid "Bank cards, Apple Pay and Google Pay. 1% per successful payment (plus your card account fees), no subscription. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
+msgstr "Cartes bancaires, Apple Pay et Google Pay. 1 % par paiement réussi (plus les frais de votre compte carte), sans abonnement. Exige un compte carte Technas Pay actif. La clé se règle dans « Mobile money (Technas Pay) »."
 
 msgid "Bank card"
 msgstr "Carte bancaire"
