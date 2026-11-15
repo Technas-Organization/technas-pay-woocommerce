@@ -26,7 +26,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.1.1';
+    public const VERSION = '0.1.2';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -405,7 +405,7 @@ final class TechnasPay
         return CardAccount::fromApi($this->callMap('GET', '/v1/card/account'));
     }
 
-    /** https://dashboard.stripe.com/ : le responsable s'y connecte avec SES identifiants Stripe. */
+    /** Tableau de bord de votre compte carte : le responsable s'y connecte avec SES identifiants. */
     public function getCardDashboardLink(): string
     {
         return D::str($this->callMap('POST', '/v1/card/dashboard-link', []), 'url');
