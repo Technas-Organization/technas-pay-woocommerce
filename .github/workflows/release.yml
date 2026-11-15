@@ -14,7 +14,7 @@ jobs:
     # Dépôt PUBLIC : machines GitHub (décision de Jonas, 15/11/2026).
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Zip installable
         run: |
           mkdir -p dist/technas-pay-woocommerce
