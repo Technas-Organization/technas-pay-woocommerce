@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Technas Pay for WooCommerce 0.1.1\n"
+"Project-Id-Version: Technas Pay for WooCommerce 0.2.0\n"
 "Language: fr_FR\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
@@ -149,3 +149,50 @@ msgstr "Technas Pay est en mode TEST (clé tps_test_) : aucun argent réel n'est
 msgid "%s (TEST, no real payment)"
 msgstr "%s (TEST, aucun paiement réel)"
 
+msgid "Technas Pay: new mobile money payments are refused until the account holder's identity is verified. Card payments are not affected."
+msgstr "Technas Pay : les nouveaux paiements mobile money sont refusés tant que l'identité du responsable du compte n'est pas vérifiée. Les paiements par carte ne sont pas concernés."
+
+#. translators: 1: amount collected, 2: threshold (both in CFA francs)
+#, php-format
+msgid "Technas Pay: identity check needed soon. Collected: %1$s F CFA of %2$s F CFA allowed without a verified identity."
+msgstr "Technas Pay : vérification d'identité bientôt nécessaire. Encaissé : %1$s F CFA sur %2$s F CFA permis sans identité vérifiée."
+
+#. translators: %s: deadline date
+#, php-format
+msgid "Deadline: %s."
+msgstr "Échéance : %s."
+
+msgid "Upload your ID in the Technas Pay console"
+msgstr "Déposez votre pièce d'identité dans la console Technas Pay"
+
+msgid "Mobile money payment is not available right now. Please choose card or try again later."
+msgstr "Le paiement mobile money n'est pas disponible pour le moment. Choisissez la carte ou réessayez plus tard."
+
+msgid "Identity threshold"
+msgstr "Seuil d'identité"
+
+msgid "The identity threshold could not be read right now. It will be read again in a few minutes."
+msgstr "Le seuil d'identité n'a pas pu être lu pour le moment. Il sera relu dans quelques minutes."
+
+msgid "Identity verified: no threshold applies."
+msgstr "Identité vérifiée : aucun seuil ne s'applique."
+
+msgid "No identity threshold applies to this account."
+msgstr "Aucun seuil d'identité ne s'applique à ce compte."
+
+msgid "Threshold reached: new mobile money payments are refused until the identity is verified. Card payments are not affected."
+msgstr "Seuil atteint : les nouveaux paiements mobile money sont refusés tant que l'identité n'est pas vérifiée. Les paiements par carte ne sont pas concernés."
+
+msgid "Threshold close: upload your ID before the deadline."
+msgstr "Seuil proche : déposez votre pièce d'identité avant l'échéance."
+
+msgid "Below the threshold."
+msgstr "Sous le seuil."
+
+#. translators: 1: amount collected, 2: threshold (both in CFA francs)
+#, php-format
+msgid "Collected: %1$s F CFA. Threshold: %2$s F CFA."
+msgstr "Encaissé : %1$s F CFA. Seuil : %2$s F CFA."
+
+msgid "Open the Technas Pay console"
+msgstr "Ouvrir la console Technas Pay"

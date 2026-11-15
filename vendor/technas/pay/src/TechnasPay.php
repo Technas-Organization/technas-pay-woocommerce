@@ -6,6 +6,7 @@ namespace TechnasPay;
 
 use TechnasPay\App\AppRoutes;
 use TechnasPay\Http\CurlTransport;
+use TechnasPay\Model\AccountKyc;
 use TechnasPay\Internal\Data as D;
 use TechnasPay\Http\Transport;
 use TechnasPay\Model\CardAccount;
@@ -26,7 +27,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.1.2';
+    public const VERSION = '0.2.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -332,6 +333,16 @@ final class TechnasPay
     public function setPayoutDestination(string $country, string $network, string $phone, string $beneficiaryName): array
     {
         return $this->callMap('PUT', '/v1/payout-destination', ['country' => $country, 'network' => $network, 'phone' => $phone, 'beneficiary_name' => $beneficiaryName]);
+    }
+
+    /**
+     * Le seuil d'identité de votre compte : encaissé, seuil, échéance, `consoleUrl` où le responsable
+     * dépose sa pièce. À montrer au MARCHAND (réglages, tableau de bord), jamais au client final.
+     * Les chiffres viennent d'ici : ne les écrivez pas en dur.
+     */
+    public function getAccountKyc(): AccountKyc
+    {
+        return AccountKyc::fromApi($this->callMap('GET', '/v1/account/kyc'));
     }
 
     // --- Hors zone franc CFA --------------------------------------------------------------------

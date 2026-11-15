@@ -1,6 +1,6 @@
 msgid ""
 msgstr ""
-"Project-Id-Version: Technas Pay for WooCommerce 0.1.1\n"
+"Project-Id-Version: Technas Pay for WooCommerce 0.2.0\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
@@ -148,3 +148,50 @@ msgstr ""
 msgid "%s (TEST, no real payment)"
 msgstr ""
 
+msgid "Technas Pay: new mobile money payments are refused until the account holder's identity is verified. Card payments are not affected."
+msgstr ""
+
+#. translators: 1: amount collected, 2: threshold (both in CFA francs)
+#, php-format
+msgid "Technas Pay: identity check needed soon. Collected: %1$s F CFA of %2$s F CFA allowed without a verified identity."
+msgstr ""
+
+#. translators: %s: deadline date
+#, php-format
+msgid "Deadline: %s."
+msgstr ""
+
+msgid "Upload your ID in the Technas Pay console"
+msgstr ""
+
+msgid "Mobile money payment is not available right now. Please choose card or try again later."
+msgstr ""
+
+msgid "Identity threshold"
+msgstr ""
+
+msgid "The identity threshold could not be read right now. It will be read again in a few minutes."
+msgstr ""
+
+msgid "Identity verified: no threshold applies."
+msgstr ""
+
+msgid "No identity threshold applies to this account."
+msgstr ""
+
+msgid "Threshold reached: new mobile money payments are refused until the identity is verified. Card payments are not affected."
+msgstr ""
+
+msgid "Threshold close: upload your ID before the deadline."
+msgstr ""
+
+msgid "Below the threshold."
+msgstr ""
+
+#. translators: 1: amount collected, 2: threshold (both in CFA francs)
+#, php-format
+msgid "Collected: %1$s F CFA. Threshold: %2$s F CFA."
+msgstr ""
+
+msgid "Open the Technas Pay console"
+msgstr ""

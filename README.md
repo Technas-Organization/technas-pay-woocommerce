@@ -22,6 +22,7 @@ C'est tout. Faites une commande de test : la page de paiement vous propose « r�
 - **Un refus n'annule rien.** Le client peut réessayer sur la même page pendant une heure. Si le lien expire, il repaie depuis sa commande, sans risque de payer deux fois (une référence = un essai).
 - **Rembourser depuis WooCommerce** : dans la commande, **Rembourser → Rembourser via Technas Pay**, en tout ou en partie. L'argent repart au numéro ou à la carte qui a payé.
 - **Montant vérifié** : si le montant payé ne correspond pas à la commande, elle est mise « en attente » avec une note, au lieu de passer payée.
+- **Seuil d'identité** : avec une clé `tps_live_`, les réglages Mobile money montrent ce que le compte a encaissé, le seuil, l'échéance et le lien vers la console Technas Pay, et une notice prévient l'administrateur quand le seuil approche ou est atteint. Au-delà du seuil (1 000 000 F CFA encaissés en cumul, ou 30 jours après le premier paiement réel, chiffres lus chez Technas), un compte sans pièce d'identité vérifiée voit ses nouveaux paiements mobile money refusés ; la carte n'est pas concernée, rien de ce qui existe n'est bloqué. Le client voit alors un message neutre qui lui propose la carte.
 - Fonctionne avec la **page de paiement classique et la page en blocs** (WooCommerce 8.3+), et le stockage des commandes HPOS.
 
 ## Conditions

@@ -65,6 +65,20 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 		try {
 			$payment = Technas_Pay_WC::start_payment( $order, $this->technas_method(), $this->get_return_url( $order ) );
 		} catch ( TechnasPayException $e ) {
+			if ( $e->errorCode === 'kyc_required' ) {
+				// Seuil d'identité atteint : pour le marchand, une note de journal ; le client voit un
+				// message neutre. L'état gardé est relu au prochain affichage de l'administration.
+				delete_transient( Technas_Pay_WC::KYC_TRANSIENT );
+				wc_get_logger()->warning(
+					sprintf(
+						'Technas Pay: mobile money refused for order %1$s (kyc_required, reason %2$s). The account holder must upload their ID in the Technas Pay console: %3$s',
+						$order->get_id(),
+						$e->details['reason'] ?? '?',
+						$e->details['consoleUrl'] ?? '',
+					),
+					array( 'source' => 'technas-pay' )
+				);
+			}
 			$order->add_order_note(
 				sprintf(
 				/* translators: 1: error code */

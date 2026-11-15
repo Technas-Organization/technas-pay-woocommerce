@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.0 — 2026-11-15
+
+- Seuil d'identité : `getAccountKyc()` (`GET /v1/account/kyc`) rend un `AccountKyc` typé (`stage`, `level`, `collectedXof`, `thresholdXof`, `graceDays`, `deadline`, `consoleUrl`…). Les valeurs inconnues de `stage`, `level` et `reason` sont gardées telles quelles.
+- Avis `account.kyc_required` : fonction `onKycRequired`, contenu typé dans `$event->kycRequired` (`KycRequired`).
+- Erreurs `kyc_required` et `contract_required` (409, non rejouables) : `details` porte `consoleUrl`, et `version` pour le contrat.
+- README et AGENTS.md : section « Seuil d'identité » et conduite à tenir sur ces erreurs.
+
 ## 0.1.2 — 2026-11-15
 
 - Remboursement par carte : `Refund::$kind` vaut désormais `card` (valeurs : `payout`, `external`, `card`). Un ancien `stripe` reçu de l'API est encore accepté et lu comme `card`, le temps de la transition.

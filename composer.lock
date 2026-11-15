@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "49ae8d59306b48def5f7f917ec44d85e",
+    "content-hash": "806471d8d6ffbd47da625b5a3b6dc090",
     "packages": [
         {
             "name": "technas/pay",
-            "version": "v0.1.2",
+            "version": "v0.2.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Technas-Organization/technas-pay-php.git",
-                "reference": "c82206e7e6cb54c632974b5bdc4453189fadf501"
+                "reference": "8f3a2843841f17477899445557027d21b214f0c6"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/c82206e7e6cb54c632974b5bdc4453189fadf501",
-                "reference": "c82206e7e6cb54c632974b5bdc4453189fadf501",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/8f3a2843841f17477899445557027d21b214f0c6",
+                "reference": "8f3a2843841f17477899445557027d21b214f0c6",
                 "shasum": ""
             },
             "require": {
@@ -66,10 +66,10 @@
                 "xof"
             ],
             "support": {
-                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.1.2",
+                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.2.0",
                 "issues": "https://github.com/Technas-Organization/technas-pay-php/issues"
             },
-            "time": "2026-11-15T02:19:59+00:00"
+            "time": "2026-11-15T19:17:07+00:00"
         }
     ],
     "packages-dev": [],

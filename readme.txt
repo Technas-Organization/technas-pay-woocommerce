@@ -4,7 +4,7 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.1.2
+Stable tag: 0.2.0
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -17,6 +17,7 @@ Technas Pay brings mobile money and cards together. Your customers pay with Oran
 * Orders are marked paid only on Technas Pay's signed notification, never on the browser return.
 * A declined payment is not final: the customer can retry on the same page. An expired link can be paid again from the order, without paying twice.
 * Refund from the WooCommerce order screen, in full or in part.
+* Identity threshold: with a tps_live_ key, the settings show what the account has collected, the threshold, the deadline and a link to the Technas Pay console, and an admin notice warns when the threshold is close or reached. Card payments are not affected.
 * Works with the classic and block checkout, and with HPOS.
 
 Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require an active Technas Pay card account.
@@ -28,6 +29,11 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.2.0 =
+* Identity threshold: "Identity threshold" row in the Mobile money settings (collected, threshold, deadline, console link; tps_live_ key only), admin notice when the threshold is close or reached, kept up to date by the account.kyc_required notification.
+* When mobile money is refused because the threshold is reached (kyc_required), the customer sees a neutral message offering card, and the store owner gets a log entry.
+* Technas Pay PHP SDK 0.2.0.
 
 = 0.1.2 =
 * Operator list matches the networks open today (Orange Money, MTN MoMo, Moov Money, Wave).

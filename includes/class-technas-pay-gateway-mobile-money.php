@@ -30,6 +30,10 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 				'description' => __( 'Starts with tps_test_ (test, no money moves) or tps_live_ (real payments). Shared by mobile money and card. Ask contact@technas.fr for a test key.', 'technas-pay-woocommerce' ),
 				'default'     => '',
 			),
+			'kyc'     => array(
+				'title' => __( 'Identity threshold', 'technas-pay-woocommerce' ),
+				'type'  => 'technas_kyc',
+			),
 			'webhook' => array(
 				'title'       => __( 'Notification address', 'technas-pay-woocommerce' ),
 				'type'        => 'title',
@@ -61,6 +65,71 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 		</tr>
 		<?php
 		return (string) ob_get_clean();
+	}
+
+	/**
+	 * « Seuil d'identité » : ce que le compte a encaissé, le seuil, l'échéance et le lien vers la
+	 * console. Clé `tps_live_` seulement (en test, rien ne s'applique : la ligne n'est pas montrée).
+	 */
+	public function generate_technas_kyc_html( string $key, array $data ): string {
+		if ( ! Technas_Pay_WC::is_configured() || Technas_Pay_WC::is_test_mode() ) {
+			return '';
+		}
+		$kyc = Technas_Pay_WC::account_kyc();
+		ob_start();
+		?>
+		<tr valign="top" class="technas-pay-kyc">
+			<th scope="row" class="titledesc"><?php echo esc_html( $data['title'] ); ?></th>
+			<td class="forminp">
+				<?php if ( ! $kyc ) : ?>
+					<p><?php esc_html_e( 'The identity threshold could not be read right now. It will be read again in a few minutes.', 'technas-pay-woocommerce' ); ?></p>
+				<?php else : ?>
+					<p>
+						<?php
+						echo esc_html(
+							match ( $kyc->stage ) {
+								'verified' => __( 'Identity verified: no threshold applies.', 'technas-pay-woocommerce' ),
+								'not_applicable' => __( 'No identity threshold applies to this account.', 'technas-pay-woocommerce' ),
+								'blocked' => __( 'Threshold reached: new mobile money payments are refused until the identity is verified. Card payments are not affected.', 'technas-pay-woocommerce' ),
+								'soon' => __( 'Threshold close: upload your ID before the deadline.', 'technas-pay-woocommerce' ),
+								default => __( 'Below the threshold.', 'technas-pay-woocommerce' ),
+							}
+						);
+						?>
+					</p>
+					<?php if ( $kyc->applies ) : ?>
+						<p>
+							<?php
+							echo esc_html(
+								sprintf(
+									/* translators: 1: amount collected, 2: threshold (both in CFA francs) */
+									__( 'Collected: %1$s F CFA. Threshold: %2$s F CFA.', 'technas-pay-woocommerce' ),
+									number_format_i18n( $kyc->collectedXof ),
+									number_format_i18n( $kyc->thresholdXof )
+								)
+							);
+							$deadline = Technas_Pay_WC::kyc_deadline( $kyc );
+							if ( $deadline !== '' ) {
+								/* translators: %s: deadline date */
+								echo ' ' . esc_html( sprintf( __( 'Deadline: %s.', 'technas-pay-woocommerce' ), $deadline ) );
+							}
+							?>
+						</p>
+					<?php endif; ?>
+					<?php $url = Technas_Pay_WC::kyc_console_url( $kyc ); ?>
+					<?php if ( $url !== '' ) : ?>
+						<p><a href="<?php echo esc_url( $url ); ?>" target="_blank" rel="noopener noreferrer"><?php esc_html_e( 'Open the Technas Pay console', 'technas-pay-woocommerce' ); ?></a></p>
+					<?php endif; ?>
+				<?php endif; ?>
+			</td>
+		</tr>
+		<?php
+		return (string) ob_get_clean();
+	}
+
+	/** La ligne « Seuil d'identité » ne s'enregistre pas : elle est lue chez Technas. */
+	public function validate_technas_kyc_field( string $key, $value ): string {
+		return '';
 	}
 
 	/**

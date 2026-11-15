@@ -25,6 +25,12 @@ final class WebhookHandlers
         /** Si ce n'est pas vous qui avez changé d'option, prévenez Technas. */
         public readonly ?\Closure $onFxModeUpdated = null,
         public readonly ?\Closure $onCardAccountUpdated = null,
+        /**
+         * `account.kyc_required` (`$e->kycRequired`) : prévenez le RESPONSABLE du compte qu'il doit
+         * déposer sa pièce (`consoleUrl`). Envoyé à 80 % du seuil, 7 jours avant l'échéance, puis
+         * au premier refus.
+         */
+        public readonly ?\Closure $onKycRequired = null,
     ) {
     }
 
@@ -40,6 +46,7 @@ final class WebhookHandlers
             $type === 'balance.converted' => $this->onBalanceConverted,
             $type === 'fx_mode.updated' => $this->onFxModeUpdated,
             $type === 'card_account.updated' => $this->onCardAccountUpdated,
+            $type === 'account.kyc_required' => $this->onKycRequired,
             // Type inconnu : acquitté sans rien appeler (sinon relivré pendant trois jours).
             default => null,
         };
