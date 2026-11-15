@@ -1,6 +1,6 @@
 # technas/pay (PHP) : règles pour un agent de code
 
-Consignes pour un assistant de code (Codex, Claude Code…). Appliquez-les dans l'application de l'utilisateur, pas dans ce dépôt. Le README détaille chaque fonction ; des exemples sont dans [`examples/`](examples) (Laravel, Symfony, PHP sans framework).
+Consignes pour un assistant de code. Appliquez-les dans l'application de l'utilisateur, pas dans ce dépôt. Le README détaille chaque fonction ; des exemples sont dans [`examples/`](examples) (Laravel, Symfony, PHP sans framework).
 
 Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : mêmes noms de méthodes, en PHP (`$pay->askForPayment([...])`, propriétés `$payment->checkoutUrl`).
 
@@ -35,7 +35,7 @@ composer require technas/pay:^0.1
 | Numéro de reversement (administrateur) | `$pay->getPayoutNetworks('TG')`, `$pay->setPayoutDestination('TG', 'moov_tg', '+228…', 'Nom')` |
 | Payer par carte | `$pay->askForPayment(['method' => 'card', 'amount' => 12.5, 'currency' => 'EUR', …])` après `$pay->getCardAccount()->canAcceptPayments` |
 | Ouvrir le compte carte | `$pay->startCardOnboarding($returnUrl, $refreshUrl, 'TG')`, rediriger le RESPONSABLE vers `url` |
-| Tableau de bord carte | `$pay->getCardDashboardLink()` → https://dashboard.stripe.com/ |
+| Tableau de bord carte | `$pay->getCardDashboardLink()` → tableau de bord de votre compte carte |
 | Tester la route d'avis | `$pay->createTestWebhook('payment.completed', '42-1', 5000, 'XOF')` |
 | Jouer le payeur en test | `$pay->simulateTestPayment($id, 'completed' \| 'failed' \| 'expired')` |
 
@@ -145,11 +145,11 @@ Ce n'est PAS le même parcours que le mobile money. Ne le proposez que si l'util
    - Le lien expire en quelques minutes : générez-le au clic, ne l'envoyez jamais par e-mail.
    - Sur `refreshUrl`, rappelez `startCardOnboarding` et redirigez à nouveau.
    - Sur `returnUrl`, affichez `$pay->getCardAccount()` : `status` dit où il en est (`onboarding`, `under_review`, `restricted`, `enabled`) et `requirements` ce qui manque.
-   - Le responsable y donne son identité et sa banque au prestataire carte. Ni vous ni Technas ne voyez son IBAN.
+   - Le responsable y donne son identité et sa banque sur la page sécurisée de notre partenaire carte (Stripe), qui vous fera accepter son contrat. Ni vous ni Technas ne voyez son IBAN.
 2. **Proposer la carte seulement si `canAcceptPayments` est vrai.** Gardez l'état en base via `onCardAccountUpdated`, ou relisez `getCardAccount()`. Sinon, ne montrez que le mobile money.
 3. **Faire payer :** `$pay->askForPayment(['method' => 'card', 'amount' => 49.9, 'currency' => "EUR", 'reference' => …, 'customer' => …, 'returnUrl' => …])`, puis redirection vers `$payment->checkoutUrl`. `currency` est obligatoire par carte. Le reste est identique : même webhook `onCompleted`, même règle « une référence = un essai », même `payment.expired` au bout d'une heure.
 4. **L'argent va directement sur le compte carte de l'utilisateur**, commission Technas déjà retirée. Il n'apparaît PAS dans `getBalance()` et ne passe pas par les reversements. Les virements vers sa banque se règlent dans son tableau de bord carte (`getCardDashboardLink()`).
-5. **Rembourser :** le même `$pay->refund($paymentId, amount: ?)`. La carte est remboursée depuis son compte carte (`$refund->kind === 'stripe'`), sans toucher au solde Technas ; `fees` est sans objet. La commission n'est pas rendue.
+5. **Rembourser :** le même `$pay->refund($paymentId, amount: ?)`. La carte est remboursée depuis son compte carte (`$refund->kind === 'card'`), sans toucher au solde Technas ; `fees` est sans objet. La commission n'est pas rendue.
 6. **Erreur `card_account_not_ready` (409)** : le compte n'encaisse pas encore. `$e->details['accountStatus']` dit pourquoi. Ne réessayez pas : proposez le mobile money, ou renvoyez le responsable vers `startCardOnboarding`.
 7. **En test** (`tps_test_`), la carte de test `4242 4242 4242 4242`, une date future et n'importe quel code valident le paiement ; l'inscription de test accepte des données fictives.
 

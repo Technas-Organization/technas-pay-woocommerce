@@ -2,7 +2,7 @@
 
 Encaissez le **mobile money** (Orange Money, MTN MoMo, Moov Money, Wave, Mixx…) et la **carte bancaire** (avec Apple Pay et Google Pay) sur votre boutique WooCommerce. Sans développeur.
 
-**Technas Pay réunit le mobile money et la carte dans un seul outil.** Carte : 1 % (plus les frais Stripe de votre compte). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer. Devises et pays, pièces demandées, versements : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
+**Technas Pay réunit le mobile money et la carte dans un seul outil.** Carte : 1 % (plus les frais de votre compte carte). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer. Devises et pays, pièces demandées, versements : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
 
 ## Installer (5 minutes)
 

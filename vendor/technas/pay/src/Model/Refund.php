@@ -24,7 +24,10 @@ final class Refund
         /** `pending`, `completed`, `failed`. */
         public readonly string $status,
         public readonly ?string $failure,
-        /** `payout` (renvoyé par Technas), `stripe` (carte, depuis VOTRE compte carte), `external` (hors plateforme). */
+        /**
+         * `payout` (renvoyé par Technas), `card` (carte, depuis VOTRE compte carte), `external` (hors plateforme).
+         * Un ancien `stripe` reçu de l'API est lu comme `card`.
+         */
         public readonly string $kind,
         public readonly ?string $method,
         public readonly ?string $note,
@@ -40,8 +43,14 @@ final class Refund
             D::str($r, 'id'), D::str($r, 'payment_id'), D::str($r, 'payment_reference'),
             D::num($r, 'amount'), D::num($r, 'sent_amount'), D::num($r, 'fee'), D::str($r, 'fees', 'partner'),
             D::num($r, 'balance_debit'), D::str($r, 'currency'), D::str($r, 'status'),
-            D::nstr($r, 'failure'), D::str($r, 'kind', 'payout'), D::nstr($r, 'method'), D::nstr($r, 'note'),
+            D::nstr($r, 'failure'), self::kind(D::str($r, 'kind', 'payout')), D::nstr($r, 'method'), D::nstr($r, 'note'),
             D::nstr($r, 'recorded_by'), D::nstr($r, 'created_at'),
         );
+    }
+
+    /** `stripe` (ancien nom, période de transition) devient `card`. */
+    private static function kind(string $kind): string
+    {
+        return $kind === 'stripe' ? 'card' : $kind;
     }
 }

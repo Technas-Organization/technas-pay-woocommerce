@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace TechnasPay\Tests;
 
 use PHPUnit\Framework\TestCase;
+use TechnasPay\Model\Refund;
 use TechnasPay\Status;
 use TechnasPay\TechnasPay;
 use TechnasPay\TechnasPayException;
@@ -182,10 +183,19 @@ final class ClientTest extends TestCase
             $body = json_encode(['id' => 'e', 'type' => $type, 'created_at' => 'x', 'data' => $data]);
             self::assertSame(200, $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h)['status']);
         }
-        self::assertSame(['refund:stripe', 'card:oui', 'expired:r-1', 'topup:5'], $seen);
+        self::assertSame(['refund:card', 'card:oui', 'expired:r-1', 'topup:5'], $seen);
         $body = json_encode(['id' => 'e', 'type' => 'payment.completed', 'created_at' => 'x', 'data' => ['id' => 'p', 'reference' => 'r', 'status' => 'completed']]);
         $this->expectException(\RuntimeException::class);
         $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), new WebhookHandlers(onCompleted: fn () => throw new \RuntimeException('base en panne')));
+    }
+
+    public function testRemboursementCarteKindCard(): void
+    {
+        $base = ['id' => 're', 'payment_id' => 'p', 'payment_reference' => 'r', 'amount' => 1, 'currency' => 'EUR', 'status' => 'completed'];
+        self::assertSame('card', Refund::fromApi($base + ['kind' => 'stripe'])->kind, 'ancien nom, transition');
+        self::assertSame('card', Refund::fromApi($base + ['kind' => 'card'])->kind);
+        self::assertSame('payout', Refund::fromApi($base + ['kind' => 'payout'])->kind);
+        self::assertSame('external', Refund::fromApi($base + ['kind' => 'external'])->kind);
     }
 
     public function testRegles(): void

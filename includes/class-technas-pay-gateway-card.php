@@ -11,7 +11,7 @@ final class Technas_Pay_Gateway_Card extends Technas_Pay_Gateway {
 	public function __construct() {
 		$this->id                 = 'technas_pay_card';
 		$this->method_title       = __( 'Card (Technas Pay)', 'technas-pay-woocommerce' );
-		$this->method_description = __( 'Bank cards, Apple Pay and Google Pay. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) ».', 'technas-pay-woocommerce' );
+		$this->method_description = __( 'Bank cards, Apple Pay and Google Pay. 1% per successful payment (plus your card account fees), no subscription. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) ».', 'technas-pay-woocommerce' );
 		parent::__construct();
 	}
 

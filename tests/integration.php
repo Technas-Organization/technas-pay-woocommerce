@@ -293,6 +293,8 @@ $card->process_payment($o8->get_id());
 $sent = end($fake->calls);
 tp_check($sent['body']['method'] === 'card' && $sent['body']['currency'] === 'EUR' && $sent['body']['amount'] === 12.5 && $sent['body']['reference'] === 'wc-' . $o8->get_id() . '-card-1', 'carte : method, devise, décimales et référence à part', $sent['body']);
 update_option('woocommerce_currency', 'XOF');
+$rk = ['id' => 're_c', 'payment_id' => 'pay_c', 'payment_reference' => 'wc-1-card-1', 'amount' => 12.5, 'currency' => 'EUR', 'status' => 'completed'];
+tp_check(\TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'stripe'])->kind === 'card' && \TechnasPay\Model\Refund::fromApi($rk + ['kind' => 'card'])->kind === 'card', 'remboursement carte : kind « card », ancien « stripe » lu comme « card » (SDK embarqué)');
 
 // 12. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).
 wp_mkdir_p($out_dir);

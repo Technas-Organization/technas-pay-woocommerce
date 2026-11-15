@@ -4,11 +4,11 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
-Accept mobile money (Orange Money, MTN MoMo, Moov, Wave, Mixx) and card payments in West and Central Africa. Card: 1% (plus your Stripe account fees). Mobile money: 2% (operator fees are paid by the customer). No subscription.
+Accept mobile money (Orange Money, MTN MoMo, Moov, Wave, Mixx) and card payments in West and Central Africa. Card: 1% (plus your card account fees). Mobile money: 2% (operator fees are paid by the customer). No subscription.
 
 == Description ==
 
@@ -28,6 +28,10 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.1.1 =
+* Card refunds are reported as "card" (Technas Pay PHP SDK 0.1.2).
+* Pricing wording: card 1% plus your card account fees, mobile money 2% (operator fees are paid by the customer).
 
 = 0.1.0 =
 * First version: mobile money and card, signed notifications, refunds, block checkout.
