@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0 — 2026-11-15
+
+- Routes toutes faites : un essai d'un autre montant (`reference_conflict`, le client a changé d'offre) fait passer à l'essai suivant, comme un essai expiré, dans la même limite `maxAttempts`. Avant, le client recevait un refus alors que rien n'était payé.
+- Contrat v1 à jour (24 cas) : « démarrer : le client a changé d'offre (autre montant) → essai suivant, jamais un refus ».
+- Documentation : « Le client change d'offre ou revient plus tard » dans AGENTS.md, README et llms.txt, avec un exemple (relire le dernier essai, nouvel essai `n + 1`, rembourser un essai payé en trop).
+
 ## 0.2.1 — 2026-11-15
 
 - Avis `account.kyc_required` : `KycRequired` lit aussi `stage`, `blockReason`, `daysElapsed`, `graceDays` et `firstCollectedAt` (champs de `GET /v1/account/kyc`), tous facultatifs : `null` sur un avis qui ne les porte pas. `reason` reste le déclencheur de l'avis.

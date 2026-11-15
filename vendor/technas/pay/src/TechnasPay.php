@@ -27,7 +27,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.2.1';
+    public const VERSION = '0.3.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 

@@ -261,7 +261,9 @@ final class Technas_Pay_WC {
 				$payment = $pay->askForPayment( $input );
 				break;
 			} catch ( TechnasPayException $e ) {
-				if ( $e->errorCode === 'payment_expired' && $attempt < self::MAX_ATTEMPTS ) {
+				// Essai expiré, ou d'un autre montant (le total a changé depuis le premier essai,
+				// reference_conflict) : on passe au suivant, jamais un refus au client.
+				if ( ( $e->errorCode === 'payment_expired' || $e->errorCode === 'reference_conflict' ) && $attempt < self::MAX_ATTEMPTS ) {
 					continue;
 				}
 				throw $e;

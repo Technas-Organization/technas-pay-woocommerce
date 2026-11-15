@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.2
+composer require technas/pay:^0.3
 ```
 
 ## Quelle méthode pour quoi
@@ -26,6 +26,7 @@ composer require technas/pay:^0.2
 | Savoir qu'elle est payée | avis signé : `$pay->handleWebhook($corpsBrut, $signature, new WebhookHandlers(onCompleted: …))` |
 | Rattraper un avis manqué | `$pay->getPaymentByReference($reference)` |
 | Savoir si on peut relancer | `onExpired`, ou `Status::canRetry($pay->getPayment($id)->status)` |
+| Le client change d'offre ou revient plus tard | nouvel essai `Status::retryReference($factureId, $n + 1)` ; au retour, `$pay->getPayment($dernierPaymentId)` d'abord |
 | Rembourser | `$pay->refund($paymentId, amount: ?, fees: ?, reference: ?)` |
 | Noter un remboursement fait hors Technas | `$pay->recordExternalRefund($paymentId, 2000, 'Flooz')` |
 | Recharger le solde | `$pay->topUpBalance(20000, 'XOF')`, ouvrir `checkoutUrl` ; `onTopUp` |
@@ -122,6 +123,57 @@ Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: �
 - `expired` est définitif : le lien est fermé, Technas a vérifié chez l'opérateur que rien n'a été payé ni n'est en cours. `Status::canRetry($payment->status)` vaut `true` seulement là.
 - La même référence rend le même paiement expiré : générez-en une nouvelle (ex. `"$orderId-2"`) et gardez le nouveau `$payment->id`.
 - Expliquez cette règle à l'utilisateur : un client relancé sur `failed` pourrait payer deux fois.
+
+## Le client change d'offre ou revient plus tard
+
+- **Une référence = un essai.** Nouvelle offre, ou retour après expiration : un NOUVEL essai, avec une nouvelle référence `Status::retryReference($factureId, $n + 1)` (`$n` gardé en base). Réutiliser la référence d'un autre montant lève `reference_conflict` (409) ; celle d'un essai expiré, `payment_expired` (409). Les routes toutes faites (`appRoutes`) le font seules.
+- **Une facture n'est payée QUE sur `payment.completed`** (avis signé, `onCompleted`). Jamais sur `returnUrl`, jamais à l'ouverture de la page.
+- **Un essai non payé ne bloque jamais un nouvel essai.** `pending` ou `failed` et le client change d'offre : créez le nouvel essai, ne refusez pas. `expired` : marquez la tentative expirée et laissez recommencer.
+- **Au retour du client**, vérifiez avec `$pay->getPayment($dernierPaymentId)` avant de dire quoi que ce soit ; ne vous fiez jamais seulement à votre base.
+- **Un ancien essai payé APRÈS le nouveau** (le client a payé les deux pages) : n'activez rien deux fois ; remboursez l'essai en trop avec `$pay->refund($paymentId)`.
+
+```php
+use TechnasPay\Status;
+use TechnasPay\Webhook\Event;
+use TechnasPay\Webhook\WebhookHandlers;
+
+// Clic sur « Payer » (première fois, nouvelle offre, ou retour plus tard).
+function payer(Facture $facture, int $montant): string
+{
+    global $pay;
+    if ($facture->dernier_payment_id !== null) {
+        $dernier = $pay->getPayment($facture->dernier_payment_id); // jamais seulement sa propre base
+        if ($dernier->status === 'completed') {
+            return '/facture/' . $facture->id . '/deja-payee';
+        }
+        if ($dernier->status !== 'expired' && $dernier->amount === $montant && $dernier->checkoutUrl !== null) {
+            return $dernier->checkoutUrl; // même offre, essai en cours : la même page
+        }
+        // pending ou failed d'une autre offre, ou expired : nouvel essai, jamais un refus.
+    }
+    $facture->tentative += 1; // n + 1, gardé en base
+    $payment = $pay->askForPayment([
+        'amount' => $montant,
+        'reference' => Status::retryReference($facture->id, $facture->tentative),
+        'customer' => ['email' => $facture->email, 'name' => $facture->nom],
+        'returnUrl' => 'https://votre-site.com/merci',
+    ]);
+    $facture->dernier_payment_id = $payment->id;
+    $facture->save();
+    return (string) $payment->checkoutUrl;
+}
+
+// Seul l'avis signé payment.completed marque la facture payée.
+$handlers = new WebhookHandlers(onCompleted: function (Event $e) use ($pay): void {
+    $facture = Facture::parReference($e->payment->reference);
+    if ($facture->paye_par !== null && $facture->paye_par !== $e->payment->id) {
+        $pay->refund($e->payment->id); // l'ancienne page payée aussi : on rend l'essai en trop
+        return;
+    }
+    $facture->paye_par = $e->payment->id; // n'activer qu'une fois
+    $facture->save();
+});
+```
 
 ## Webhooks
 

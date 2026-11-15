@@ -19,7 +19,8 @@ use TechnasPay\Webhook\WebhookHandlers;
  * `POST /webhook`, et pour le marchand `GET /card/account`, `POST /card/onboarding`.
  *
  * Vous ne fournissez que `authorize` (votre authentification) et `resolveOrder` (la commande relue
- * EN BASE). Le montant ne vient jamais de l'app. Les essais expirés sont sautés tout seuls.
+ * EN BASE). Le montant ne vient jamais de l'app. Les essais expirés, ou d'un autre montant
+ * (le client a changé d'offre), sont sautés tout seuls.
  */
 final class AppRoutes
 {
@@ -73,7 +74,8 @@ final class AppRoutes
     private function start(string $orderId, AppOrder $order, string $method): Payment
     {
         // Une référence = un essai : `orderId-1`, `-2`… (carte : `orderId-card-1`…). Un essai expiré lève
-        // payment_expired, on passe au suivant. Un essai en cours (ou payé) est rendu tel quel.
+        // payment_expired, un essai d'un autre montant (le client a changé d'offre) lève reference_conflict :
+        // dans les deux cas on passe au suivant, jamais un refus. Un essai en cours (ou payé) est rendu tel quel.
         for ($attempt = 1; ; $attempt++) {
             $input = [
                 'amount' => $order->amount,
@@ -94,7 +96,7 @@ final class AppRoutes
             try {
                 return $this->pay->askForPayment($input);
             } catch (TechnasPayException $e) {
-                if ($e->errorCode === 'payment_expired' && $attempt < $this->maxAttempts) {
+                if (($e->errorCode === 'payment_expired' || $e->errorCode === 'reference_conflict') && $attempt < $this->maxAttempts) {
                     continue;
                 }
                 throw $e;
