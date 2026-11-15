@@ -1,0 +1,248 @@
+<?php
+
+defined( 'ABSPATH' ) || exit;
+
+use TechnasPay\TechnasPayException;
+use TechnasPay\Webhook\Event;
+use TechnasPay\Webhook\WebhookHandlers;
+
+/**
+ * Les avis signés de Technas Pay, reçus sur la route REST (et l'ancienne adresse `/?wc-api=technas_pay`). C'est le SEUL endroit où une
+ * commande passe à « payée » : la signature est vérifiée sur le corps brut, le montant comparé à
+ * celui de la commande. Un avis peut arriver plusieurs fois : tout est idempotent.
+ */
+final class Technas_Pay_Webhook {
+
+	private const CARD_READY_TRANSIENT = 'technas_pay_card_ready';
+
+	/** Un avis déjà traité (même `id`) est acquitté sans être rejoué, pendant les 3 jours de relivraison. */
+	private const SEEN_PREFIX = 'technas_pay_evt_';
+
+	/** Verrou par avis : deux livraisons simultanées ne traitent pas deux fois. */
+	private const LOCK_PREFIX = 'technas_pay_lock_';
+
+	/** Un avis Technas pèse quelques Ko : au-delà, refusé sans rien lire. */
+	private const MAX_BODY_BYTES = 65536;
+
+	/** Route REST : `POST /wp-json/technas-pay/v1/webhook`. Ouverte à tous, PROTÉGÉE PAR LA SIGNATURE. */
+	public static function register_route(): void {
+		register_rest_route(
+			'technas-pay/v1',
+			'/webhook',
+			array(
+				'methods'             => 'POST',
+				'callback'            => array( self::class, 'handle_rest' ),
+				// Pas d'utilisateur WordPress : Technas s'authentifie par la signature HMAC du corps,
+				// vérifiée dans handle() avant toute lecture. Sans signature valide : 400, rien n'est fait.
+				'permission_callback' => '__return_true',
+			)
+		);
+	}
+
+	public static function handle_rest( WP_REST_Request $request ): WP_REST_Response {
+		try {
+			[$status, $body] = self::handle( $request->get_body(), $request->get_header( 'x_technas_payment_signature' ) );
+		} catch ( \Throwable $e ) {
+			wc_get_logger()->error( 'Technas Pay webhook: ' . get_class( $e ), array( 'source' => 'technas-pay' ) );
+			[$status, $body] = array( 500, array( 'error' => 'handler_failed' ) );
+		}
+		return new WP_REST_Response( $body, $status );
+	}
+
+	/** Point d'entrée WooCommerce (`woocommerce_api_technas_pay`). */
+	public static function handle_request(): void {
+		// Corps BRUT de la requête (pas une ressource distante) : la signature porte dessus.
+		$raw       = (string) file_get_contents( 'php://input' ); // phpcs:ignore WordPressVIPMinimum.Performance.FetchingRemoteData.FileGetContentsRemoteFile -- php://input, corps de la requête
+		$signature = isset( $_SERVER['HTTP_X_TECHNAS_PAYMENT_SIGNATURE'] ) ? sanitize_text_field( wp_unslash( (string) $_SERVER['HTTP_X_TECHNAS_PAYMENT_SIGNATURE'] ) ) : null;
+		try {
+			[$status, $body] = self::handle( $raw, $signature );
+		} catch ( \Throwable $e ) {
+			// Erreur de notre côté (base indisponible…) : 500, Technas relivrera.
+			wc_get_logger()->error( 'Technas Pay webhook: ' . get_class( $e ), array( 'source' => 'technas-pay' ) );
+			[$status, $body] = array( 500, array( 'error' => 'handler_failed' ) );
+		}
+		status_header( $status );
+		header( 'Content-Type: application/json; charset=utf-8' );
+		echo wp_json_encode( $body );
+		exit;
+	}
+
+	/** @return array{0: int, 1: array<string, mixed>} */
+	public static function handle( string $raw, ?string $signature ): array {
+		// Contrôles bon marché d'abord : taille et forme de l'en-tête, avant toute lecture en base.
+		if ( strlen( $raw ) > self::MAX_BODY_BYTES ) {
+			return array( 413, array( 'error' => 'too_large' ) );
+		}
+		if ( ! is_string( $signature ) || ! preg_match( '/^t=\d{1,12},s=[0-9a-fA-F]{64}$/', trim( $signature ) ) ) {
+			return array( 400, array( 'error' => 'invalid_signature' ) );
+		}
+		if ( ! Technas_Pay_WC::is_configured() ) {
+			return array( 503, array( 'error' => 'not_configured' ) );
+		}
+		$pay = Technas_Pay_WC::client();
+		try {
+			$event = $pay->verifyWebhook( $raw, $signature );
+		} catch ( \TechnasPay\Webhook\WebhookVerificationException ) {
+			return array( 400, array( 'error' => 'invalid_signature' ) );
+		}
+		$seen = self::SEEN_PREFIX . md5( $event->id );
+		if ( get_transient( $seen ) ) {
+			return array(
+				200,
+				array(
+					'received'  => true,
+					'duplicate' => true,
+				),
+			); // déjà traité : rien ne se rejoue
+		}
+		// Verrou atomique (add_option échoue si l'option existe) : une livraison concurrente du même
+		// avis répond 409 et sera relivrée, après la première. Un verrou de plus de 5 min est abandonné.
+		$lock    = self::LOCK_PREFIX . md5( $event->id );
+		$started = get_option( $lock );
+		if ( is_numeric( $started ) && time() - (int) $started > 300 ) {
+			delete_option( $lock );
+		}
+		if ( ! add_option( $lock, time(), '', false ) ) {
+			return array( 409, array( 'error' => 'in_progress' ) );
+		}
+		try {
+			$result = self::dispatch( $pay, $raw, $signature );
+		} finally {
+			delete_option( $lock );
+		}
+		if ( $result['status'] === 200 ) {
+			set_transient( $seen, 1, 3 * DAY_IN_SECONDS );
+		}
+		return array( $result['status'], $result['body'] );
+	}
+
+	/** @return array{status: int, body: array<string, mixed>, event: ?\TechnasPay\Webhook\Event} */
+	private static function dispatch( \TechnasPay\TechnasPay $pay, string $raw, string $signature ): array {
+		return $pay->handleWebhook(
+			$raw,
+			$signature,
+			new WebhookHandlers(
+				onCompleted: static fn ( Event $e ) => self::on_completed( $e ),
+				onFailed: static fn ( Event $e ) => self::note( $e, __( 'Technas Pay: payment declined. This is not final, the customer can still pay on the same page.', 'technas-pay-woocommerce' ) ),
+				onExpired: static fn ( Event $e ) => self::on_expired( $e ),
+				onRefund: static fn ( Event $e ) => self::on_refund( $e ),
+				onCardAccountUpdated: static fn ( Event $e ) => set_transient( self::CARD_READY_TRANSIENT, $e->cardAccount?->canAcceptPayments ? 'yes' : 'no', HOUR_IN_SECONDS ),
+			)
+		);
+	}
+
+	private static function on_completed( Event $e ): void {
+		$payment = $e->payment;
+		$order   = $payment ? Technas_Pay_WC::order_for( $payment ) : null;
+		if ( ! $order ) {
+			return; // Pas un paiement de cette boutique (autre application sur la même clé) : ignoré.
+		}
+		if ( $order->is_paid() ) {
+			$paid_by = (string) $order->get_meta( Technas_Pay_WC::META_PAID_PAYMENT );
+			if ( $paid_by !== '' && $paid_by !== $payment->id ) {
+				// Second paiement réussi pour la même commande (carte puis mobile money…) : jamais ignoré.
+				$order->update_status(
+					'on-hold',
+					sprintf(
+						/* translators: 1: amount, 2: currency, 3: reference */
+						__( 'Technas Pay: a SECOND payment was received for this already paid order (%1$s %2$s, reference %3$s). Refund it to the customer.', 'technas-pay-woocommerce' ),
+						$payment->amount,
+						(string) $payment->currency,
+						$payment->reference,
+					)
+				);
+			}
+			return; // Même paiement relivré : déjà traité.
+		}
+		$method = $payment->method === 'card' ? 'card' : 'mobile_money';
+		// Hors zone franc CFA, le montant demandé (en F CFA) est dans originalAmount.
+		$paid     = $payment->originalAmount ?? $payment->amount;
+		$expected = Technas_Pay_WC::amount_for( $order, $method );
+		$currency = strtoupper( (string) ( $payment->originalCurrency ?? $payment->currency ) );
+		$cfa      = array( 'XOF', 'XAF' );
+		$same     = $currency === strtoupper( $order->get_currency() )
+			|| ( $method === 'mobile_money' && in_array( $currency, $cfa, true ) && in_array( strtoupper( $order->get_currency() ), $cfa, true ) );
+		if ( abs( (float) $paid - (float) $expected ) > 0.009 || ! $same ) {
+			$order->update_status(
+				'on-hold',
+				sprintf(
+				/* translators: 1: amount paid, 2: amount expected */
+					__( 'Technas Pay: amount paid (%1$s) differs from the order total (%2$s). Check before shipping.', 'technas-pay-woocommerce' ),
+					$paid,
+					$expected,
+				)
+			);
+			return;
+		}
+		if ( $payment->testMode ) {
+			// Clé de test : AUCUN argent n'a circulé. Jamais « payée » : en attente, avec la raison.
+			$order->update_status( 'on-hold', __( 'Technas Pay TEST payment: no money was received. Do not ship. Switch to a tps_live_ key to take real payments.', 'technas-pay-woocommerce' ) );
+			return;
+		}
+		$order->update_meta_data( Technas_Pay_WC::META_PAYMENT_ID, $payment->id );
+		$order->update_meta_data( Technas_Pay_WC::META_PAID_PAYMENT, $payment->id );
+		$order->update_meta_data( Technas_Pay_WC::META_METHOD, $method );
+		$order->payment_complete( $payment->id );
+		$order->add_order_note(
+			sprintf(
+			/* translators: 1: amount, 2: currency, 3: reference */
+				__( 'Technas Pay: payment received, %1$s %2$s (reference %3$s).', 'technas-pay-woocommerce' ),
+				$payment->amount,
+				(string) $payment->currency,
+				$payment->reference,
+			)
+		);
+	}
+
+	private static function on_expired( Event $e ): void {
+		$order = $e->payment ? Technas_Pay_WC::order_for( $e->payment ) : null;
+		if ( ! $order || $order->is_paid() ) {
+			return;
+		}
+		// Définitif : le prochain « Payer » de cette commande crée un NOUVEL essai (référence suivante).
+		if ( preg_match( '/-(\d+)$/', $e->payment->reference, $m ) && ! str_contains( $e->payment->reference, '-card-' ) ) {
+			$order->update_meta_data( Technas_Pay_WC::META_ATTEMPT, max( (int) $order->get_meta( Technas_Pay_WC::META_ATTEMPT ), (int) $m[1] + 1 ) );
+			$order->save();
+		}
+		$order->add_order_note( __( 'Technas Pay: the payment link expired, nothing was paid. The customer can pay again from the order page.', 'technas-pay-woocommerce' ) );
+	}
+
+	private static function on_refund( Event $e ): void {
+		$refund = $e->refund;
+		$order  = $refund ? Technas_Pay_WC::order_for_refund( $refund ) : null;
+		if ( ! $order ) {
+			return;
+		}
+		$order->add_order_note(
+			sprintf(
+			/* translators: 1: amount, 2: currency, 3: status */
+				__( 'Technas Pay refund update: %1$s %2$s, %3$s.', 'technas-pay-woocommerce' ),
+				$refund->amount,
+				$refund->currency,
+				$refund->status,
+			)
+		);
+	}
+
+	private static function note( Event $e, string $text ): void {
+		$order = $e->payment ? Technas_Pay_WC::order_for( $e->payment ) : null;
+		if ( $order && ! $order->is_paid() ) {
+			$order->add_order_note( $text );
+		}
+	}
+
+	/** Le compte carte peut-il encaisser ? Gardé une heure, et mis à jour par l'avis `card_account.updated`. */
+	public static function card_account_ready(): bool {
+		$cached = get_transient( self::CARD_READY_TRANSIENT );
+		if ( $cached === 'yes' || $cached === 'no' ) {
+			return $cached === 'yes';
+		}
+		try {
+			$ready = Technas_Pay_WC::client()->getCardAccount()->canAcceptPayments;
+		} catch ( TechnasPayException ) {
+			$ready = false;
+		}
+		set_transient( self::CARD_READY_TRANSIENT, $ready ? 'yes' : 'no', $ready ? HOUR_IN_SECONDS : 10 * MINUTE_IN_SECONDS );
+		return $ready;
+	}
+}

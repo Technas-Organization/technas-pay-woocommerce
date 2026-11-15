@@ -1,0 +1,74 @@
+{
+    "packages": [
+        {
+            "name": "technas/pay",
+            "version": "v0.1.1",
+            "version_normalized": "0.1.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Technas-Organization/technas-pay-php.git",
+                "reference": "787b93e1e075588954c62cfe32fda098548525f3"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/787b93e1e075588954c62cfe32fda098548525f3",
+                "reference": "787b93e1e075588954c62cfe32fda098548525f3",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "ext-json": "*",
+                "php": ">=8.1"
+            },
+            "require-dev": {
+                "nyholm/psr7": "^1.8",
+                "phpstan/phpstan": "^2",
+                "phpunit/phpunit": "^10.5",
+                "psr/http-server-handler": "^1.0",
+                "symfony/http-foundation": "^6.4",
+                "vimeo/psalm": "^6"
+            },
+            "suggest": {
+                "psr/http-server-handler": "Pour TechnasPay\\Bridge\\Psr15Handler (Slim, Mezzio…)",
+                "symfony/http-foundation": "Pour les routes Laravel et Symfony (TechnasPay\\Bridge\\SymfonyBridge)"
+            },
+            "time": "2026-11-15T01:49:45+00:00",
+            "type": "library",
+            "installation-source": "dist",
+            "autoload": {
+                "psr-4": {
+                    "TechnasPay\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "TechnasPay\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Encaisser du mobile money et des paiements par carte via Technas Pay depuis PHP : Laravel, Symfony, tout framework PSR-15.",
+            "homepage": "https://github.com/Technas-Organization/technas-pay",
+            "keywords": [
+                "fcfa",
+                "laravel",
+                "mobile money",
+                "payments",
+                "psr-15",
+                "symfony",
+                "technas",
+                "webhook",
+                "xaf",
+                "xof"
+            ],
+            "support": {
+                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.1.1",
+                "issues": "https://github.com/Technas-Organization/technas-pay-php/issues"
+            },
+            "install-path": "../technas/pay"
+        }
+    ],
+    "dev": false,
+    "dev-package-names": []
+}

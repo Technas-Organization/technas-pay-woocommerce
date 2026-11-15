@@ -1,0 +1,26 @@
+name: Release
+
+# Sur une étiquette vX.Y.Z : le zip installable est attaché à la Release GitHub du dépôt. La
+# publication sur WordPress.org attend l'accord de Jonas.
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  zip:
+    # Dépôt PUBLIC : machines GitHub (décision de Jonas, 15/11/2026).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Zip installable
+        run: |
+          mkdir -p dist/technas-pay-woocommerce
+          cp -r technas-pay-woocommerce.php uninstall.php includes assets languages vendor readme.txt README.md LICENSE dist/technas-pay-woocommerce/
+          (cd dist && zip -qr technas-pay-woocommerce.zip technas-pay-woocommerce)
+      - name: Release GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/technas-pay-woocommerce.zip --title "Technas Pay pour WooCommerce ${GITHUB_REF_NAME}" --notes "Téléchargez technas-pay-woocommerce.zip, puis Extensions → Ajouter → Téléverser une extension."

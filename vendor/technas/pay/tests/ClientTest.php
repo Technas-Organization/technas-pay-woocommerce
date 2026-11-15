@@ -1,0 +1,200 @@
+<?php
+
+declare(strict_types=1);
+
+namespace TechnasPay\Tests;
+
+use PHPUnit\Framework\TestCase;
+use TechnasPay\Status;
+use TechnasPay\TechnasPay;
+use TechnasPay\TechnasPayException;
+use TechnasPay\Webhook\Signature;
+use TechnasPay\Webhook\WebhookHandlers;
+use TechnasPay\Webhook\WebhookVerificationException;
+
+final class ClientTest extends TestCase
+{
+    private const API_KEY = 'pk_abc-DEF_123';
+    private const WEBHOOK_SECRET = 'ws_webhook-secret_456';
+    private const SECRET = 'tps_test_' . self::API_KEY . '.' . self::WEBHOOK_SECRET;
+    private const CUSTOMER = ['email' => 'awa@exemple.tg', 'name' => 'Awa Mensah'];
+    private const PAYMENT = ['id' => 'pay_1', 'reference' => '42-1', 'amount' => 5000, 'currency' => null, 'commission' => 100,
+        'net_amount' => 4900, 'status' => 'pending', 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_1', 'metadata' => [], 'test_mode' => true];
+
+    private function pay(FakeTransport $t, string $secret = self::SECRET): TechnasPay
+    {
+        return new TechnasPay($secret, 'https://gw.test/', $t);
+    }
+
+    public function testSeuleLaCleApiPartEtDansUnEnTete(): void
+    {
+        $t = new FakeTransport([['status' => 201, 'body' => self::PAYMENT]]);
+        $p = $this->pay($t)->askForPayment(['amount' => 5000, 'reference' => '42-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci']);
+        $call = $t->calls[0];
+        self::assertSame('https://gw.test/v1/payments', $call['url']);
+        self::assertSame('Bearer ' . self::API_KEY, $call['headers']['Authorization']);
+        $all = $call['url'] . json_encode($call['headers']) . $call['body'];
+        self::assertStringNotContainsString(self::WEBHOOK_SECRET, $all);
+        self::assertStringNotContainsString('tps_test_', $all);
+        $body = $t->jsonBody(0);
+        self::assertArrayNotHasKey('currency', $body, 'zone CFA : le client choisit son pays');
+        self::assertSame('https://p.test/merci', $body['return_url']);
+        self::assertSame(4900, $p->netAmount);
+        self::assertSame('mobile_money', $p->method);
+        self::assertStringNotContainsString(self::API_KEY, print_r($this->pay($t), true));
+    }
+
+    public function testLaDeviseSuitLePaysCfa(): void
+    {
+        $t = new FakeTransport([['status' => 201, 'body' => self::PAYMENT], ['status' => 201, 'body' => self::PAYMENT]]);
+        $pay = $this->pay($t);
+        $pay->askForPayment(['amount' => 5000, 'reference' => 'r', 'customer' => self::CUSTOMER + ['country' => 'cm'], 'returnUrl' => 'https://p']);
+        self::assertSame('XAF', $t->jsonBody(0)['currency']);
+        $pay->askForPayment(['amount' => 5000, 'reference' => 'r2', 'customer' => self::CUSTOMER + ['country' => 'GH'], 'returnUrl' => 'https://p']);
+        self::assertArrayNotHasKey('currency', $t->jsonBody(1));
+    }
+
+    public function testMontantsRefusesAvantToutAppel(): void
+    {
+        $t = new FakeTransport();
+        foreach ([50.5, 0, -1, '5000', true] as $bad) {
+            try {
+                $this->pay($t)->askForPayment(['amount' => $bad, 'reference' => 'r', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p']);
+                self::fail('montant accepté : ' . var_export($bad, true));
+            } catch (TechnasPayException $e) {
+                self::assertSame('invalid_amount', $e->errorCode);
+                self::assertSame(0, $e->status);
+            }
+        }
+        self::assertSame([], $t->calls);
+    }
+
+    public function testCarteDeviseDecimalesEtCompte(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 201, 'body' => ['method' => 'card', 'amount' => 12.5, 'currency' => 'EUR'] + self::PAYMENT],
+            ['status' => 200, 'body' => ['status' => 'enabled', 'can_accept_payments' => true]],
+            ['status' => 200, 'body' => ['url' => 'https://dashboard.stripe.com/']],
+            ['status' => 409, 'body' => ['code' => 'card_account_not_ready', 'message' => 'm', 'account_status' => 'onboarding']],
+        ]);
+        $pay = $this->pay($t);
+        try {
+            $pay->askForPayment(['method' => 'card', 'amount' => 12.5, 'reference' => 'r', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p']);
+            self::fail('carte sans devise acceptée');
+        } catch (TechnasPayException $e) {
+            self::assertSame('currency_required', $e->errorCode);
+        }
+        $p = $pay->askForPayment(['method' => 'card', 'amount' => 12.5, 'currency' => 'eur', 'reference' => 'r-card-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p']);
+        self::assertSame('card', $p->method);
+        self::assertSame(['card', 'EUR', 12.5], [$t->jsonBody(0)['method'], $t->jsonBody(0)['currency'], $t->jsonBody(0)['amount']]);
+        self::assertTrue($pay->getCardAccount()->canAcceptPayments);
+        self::assertSame('https://dashboard.stripe.com/', $pay->getCardDashboardLink());
+        try {
+            $pay->startCardOnboarding('https://a', 'https://b', 'fr');
+            self::fail('attendu card_account_not_ready');
+        } catch (TechnasPayException $e) {
+            self::assertSame('onboarding', $e->details['accountStatus']);
+            self::assertSame('FR', $t->jsonBody(3)['country']);
+        }
+    }
+
+    public function testErreursRejouablesOuNon(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 409, 'body' => ['code' => 'payment_expired', 'message' => 'm']],
+            ['status' => 503, 'body' => null],
+            ['status' => 0, 'body' => null],
+        ]);
+        $pay = $this->pay($t);
+        foreach ([['payment_expired', false, 409], ['request_failed', true, 503], ['network_error', true, 0]] as [$code, $retryable, $status]) {
+            try {
+                $pay->getBalance();
+                self::fail('erreur attendue');
+            } catch (TechnasPayException $e) {
+                self::assertSame([$code, $retryable, $status], [$e->errorCode, $e->retryable(), $e->status]);
+            }
+        }
+    }
+
+    public function testSecretMalFormeNeFuitPas(): void
+    {
+        try {
+            (new TechnasPay('mon-secret-en-clair', transport: new FakeTransport()))->getBalance();
+            self::fail('attendu invalid_secret');
+        } catch (TechnasPayException $e) {
+            self::assertSame('invalid_secret', $e->errorCode);
+            self::assertStringNotContainsString('mon-secret', $e->getMessage());
+        }
+    }
+
+    public function testIdentifiantEchappeEtSimulation(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 404, 'body' => ['code' => 'payment_not_found', 'message' => 'm']],
+            ['status' => 303, 'body' => []],
+            ['status' => 200, 'body' => ['status' => 'completed'] + self::PAYMENT],
+        ]);
+        $pay = $this->pay($t);
+        try {
+            $pay->getPayment('../balance');
+        } catch (TechnasPayException) {
+        }
+        self::assertSame('https://gw.test/v1/payments/..%2Fbalance', $t->calls[0]['url']);
+        self::assertSame('completed', $pay->simulateTestPayment('pay_1', 'completed')->status);
+        self::assertFalse($t->calls[1]['follow'], 'le 303 vers returnUrl n\'est pas suivi');
+        $this->expectExceptionMessage('tps_test_');
+        $this->pay(new FakeTransport(), str_replace('tps_test_', 'tps_live_', self::SECRET))->simulateTestPayment('p', 'completed');
+    }
+
+    public function testWebhooks(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $hook = $pay->createTestWebhook('payment.completed', '42-1', 5000, 'XOF', 100);
+        $seen = [];
+        $r = $pay->handleWebhook($hook['body'], $hook['headers'][Signature::HEADER], new WebhookHandlers(onCompleted: function ($e) use (&$seen) {
+            $seen[] = $e->payment->netAmount;
+        }));
+        self::assertSame([200, [4900]], [$r['status'], $seen]);
+        foreach ([null, 'nimporte', Signature::sign($hook['body'], 'autre'), Signature::sign($hook['body'], self::WEBHOOK_SECRET, time() - 3600)] as $sig) {
+            self::assertSame(400, $pay->handleWebhook($hook['body'], $sig, new WebhookHandlers(onCompleted: fn () => self::fail('appelée')))['status']);
+        }
+        $this->expectException(WebhookVerificationException::class);
+        $pay->verifyWebhook(str_replace('5000', '9', $hook['body']), $hook['headers'][Signature::HEADER]);
+    }
+
+    public function testFamillesDEvenementsEtFonctionQuiEchoue(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $seen = [];
+        $h = new WebhookHandlers(
+            onRefund: function ($e) use (&$seen) { $seen[] = 'refund:' . $e->refund->kind; },
+            onCardAccountUpdated: function ($e) use (&$seen) { $seen[] = 'card:' . ($e->cardAccount->canAcceptPayments ? 'oui' : 'non'); },
+            onExpired: function ($e) use (&$seen) { $seen[] = 'expired:' . $e->payment->reference; },
+            onTopUp: function ($e) use (&$seen) { $seen[] = 'topup:' . $e->data['amount']; },
+        );
+        foreach ([
+            ['refund.completed', ['id' => 're', 'payment_id' => 'p', 'payment_reference' => 'r', 'amount' => 1, 'currency' => 'EUR', 'status' => 'completed', 'kind' => 'stripe']],
+            ['card_account.updated', ['status' => 'enabled', 'can_accept_payments' => true]],
+            ['payment.expired', ['id' => 'p', 'reference' => 'r-1', 'status' => 'expired', 'amount' => 1, 'currency' => 'XOF']],
+            ['balance.topped_up', ['id' => 't', 'amount' => 5, 'currency' => 'XOF']],
+            ['nouveau.type', ['k' => 1]],
+        ] as [$type, $data]) {
+            $body = json_encode(['id' => 'e', 'type' => $type, 'created_at' => 'x', 'data' => $data]);
+            self::assertSame(200, $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h)['status']);
+        }
+        self::assertSame(['refund:stripe', 'card:oui', 'expired:r-1', 'topup:5'], $seen);
+        $body = json_encode(['id' => 'e', 'type' => 'payment.completed', 'created_at' => 'x', 'data' => ['id' => 'p', 'reference' => 'r', 'status' => 'completed']]);
+        $this->expectException(\RuntimeException::class);
+        $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), new WebhookHandlers(onCompleted: fn () => throw new \RuntimeException('base en panne')));
+    }
+
+    public function testRegles(): void
+    {
+        self::assertTrue(Status::canRetry('expired'));
+        self::assertFalse(Status::canRetry('failed'));
+        self::assertTrue(Status::isFinal('amount_mismatch'));
+        self::assertSame('CMD-42-2', Status::retryReference('CMD-42', 2));
+        self::assertSame('XOF', Status::currencyForCountry(' tg '));
+        self::assertNull(Status::currencyForCountry('GH'));
+    }
+}
