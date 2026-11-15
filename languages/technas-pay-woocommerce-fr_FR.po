@@ -196,3 +196,9 @@ msgstr "Encaissé : %1$s F CFA. Seuil : %2$s F CFA."
 
 msgid "Open the Technas Pay console"
 msgstr "Ouvrir la console Technas Pay"
+
+#. translators: %s: payment ids
+#: includes/class-technas-pay-webhook.php
+#, php-format
+msgid "Technas Pay: the order is paid, but an earlier attempt at an outdated amount was also paid (%s). Refund it to the customer before shipping."
+msgstr "Technas Pay : la commande est payée, mais un essai précédent, à un ancien montant, a aussi été payé (%s). Remboursez-le au client avant d'expédier."

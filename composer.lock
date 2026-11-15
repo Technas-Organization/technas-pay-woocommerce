@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "7a26e7ef5426de12ca9b2cd4b1e38285",
+    "content-hash": "2f96434a28ed0f08b5ea7ccc23183e05",
     "packages": [
         {
             "name": "technas/pay",
