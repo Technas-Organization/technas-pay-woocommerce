@@ -23,8 +23,8 @@ msgstr "Payez par carte, Apple Pay ou Google Pay."
 msgid "Mobile money (Technas Pay)"
 msgstr "Mobile money (Technas Pay)"
 
-msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription."
-msgstr "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… Le client choisit son pays et son opérateur sur la page Technas Pay. 2 % par paiement réussi, sans abonnement."
+msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription."
+msgstr "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… Le client choisit son pays et son opérateur sur la page Technas Pay. 2 % par paiement réussi (les frais de l'opérateur sont payés par le client), sans abonnement."
 
 msgid "Mobile money"
 msgstr "Mobile money"

@@ -22,7 +22,7 @@ msgstr ""
 msgid "Mobile money (Technas Pay)"
 msgstr ""
 
-msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription."
+msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription."
 msgstr ""
 
 msgid "Mobile money"
