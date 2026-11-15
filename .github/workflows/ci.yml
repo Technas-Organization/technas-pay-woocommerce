@@ -88,7 +88,7 @@ jobs:
           mkdir -p dist/technas-pay-woocommerce
           cp -r technas-pay-woocommerce.php uninstall.php includes assets languages vendor readme.txt LICENSE dist/technas-pay-woocommerce/
           (cd dist && zip -qr technas-pay-woocommerce.zip technas-pay-woocommerce)
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: technas-pay-woocommerce
           path: dist/technas-pay-woocommerce.zip
