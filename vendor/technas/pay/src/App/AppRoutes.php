@@ -1,0 +1,245 @@
+<?php
+
+declare(strict_types=1);
+
+namespace TechnasPay\App;
+
+use TechnasPay\Model\Payment;
+use TechnasPay\Status;
+use TechnasPay\TechnasPay;
+use TechnasPay\TechnasPayException;
+use TechnasPay\Webhook\WebhookHandlers;
+
+/**
+ * Routes toutes faites pour une app (`technas_pay_flutter`, `TechnasPayClient`) : contrat
+ * `contract/app-contract.v1.json`, rejoué ici ET par les SDK Node, Python, Dart et le client Flutter.
+ *
+ * Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /payments/{id}`,
+ * `POST /webhook`, et pour le marchand `GET /card/account`, `POST /card/onboarding`.
+ *
+ * Vous ne fournissez que `authorize` (votre authentification) et `resolveOrder` (la commande relue
+ * EN BASE). Le montant ne vient jamais de l'app. Les essais expirés sont sautés tout seuls.
+ */
+final class AppRoutes
+{
+    /** @var callable */
+    private $authorize;
+    /** @var callable */
+    private $resolveOrder;
+    /** @var callable|null */
+    private $authorizeAdmin;
+
+    public function __construct(
+        private readonly TechnasPay $pay,
+        callable $authorize,
+        callable $resolveOrder,
+        private readonly ?string $returnUrl = null,
+        private readonly ?WebhookHandlers $webhooks = null,
+        private readonly bool $card = false,
+        ?callable $authorizeAdmin = null,
+        private readonly int $maxAttempts = 20,
+    ) {
+        $this->authorize = $authorize;
+        $this->resolveOrder = $resolveOrder;
+        $this->authorizeAdmin = $authorizeAdmin;
+    }
+
+    private static function err(int $status, string $code, string $message, bool $retryable = false): AppResponse
+    {
+        return new AppResponse($status, ['code' => $code, 'message' => $message, 'retryable' => $retryable]);
+    }
+
+    private static function fromPayError(TechnasPayException $e): AppResponse
+    {
+        // Panne ou réseau côté Technas : 502, à relire plus tard. Sinon le refus est transmis tel quel.
+        if ($e->errorCode === 'network_error' || $e->status >= 500 || $e->status === 0) {
+            return self::err(502, $e->errorCode, $e->getMessage(), true);
+        }
+        return self::err($e->status, $e->errorCode, $e->getMessage(), $e->retryable());
+    }
+
+    /** `42-3` ou `42-card-3` → `42`. */
+    private static function orderIdOf(string $reference): string
+    {
+        return preg_match('/^(.+?)-(?:card-)?\d+$/', $reference, $m) ? $m[1] : $reference;
+    }
+
+    private function resolve(string $orderId, mixed $user): ?AppOrder
+    {
+        $raw = ($this->resolveOrder)($orderId, $user);
+        return $raw === null ? null : AppOrder::from($raw);
+    }
+
+    private function start(string $orderId, AppOrder $order, string $method): Payment
+    {
+        // Une référence = un essai : `orderId-1`, `-2`… (carte : `orderId-card-1`…). Un essai expiré lève
+        // payment_expired, on passe au suivant. Un essai en cours (ou payé) est rendu tel quel.
+        for ($attempt = 1; ; $attempt++) {
+            $input = [
+                'amount' => $order->amount,
+                'reference' => $method === 'card' ? "$orderId-card-$attempt" : Status::retryReference($orderId, $attempt),
+                'customer' => $order->customer,
+                'returnUrl' => $order->returnUrl ?? $this->returnUrl ?? '',
+                'metadata' => $order->metadata + ['order_id' => $orderId],
+            ];
+            if ($method === 'card') {
+                $input['method'] = 'card';
+            }
+            if ($order->currency !== null) {
+                $input['currency'] = $order->currency;
+            }
+            if ($order->description !== null) {
+                $input['description'] = $order->description;
+            }
+            try {
+                return $this->pay->askForPayment($input);
+            } catch (TechnasPayException $e) {
+                if ($e->errorCode === 'payment_expired' && $attempt < $this->maxAttempts) {
+                    continue;
+                }
+                throw $e;
+            }
+        }
+    }
+
+    /** @return array{method: string, available: bool, reason: ?string} */
+    private function cardMethod(AppOrder $order): array
+    {
+        if (!$this->card) {
+            return ['method' => 'card', 'available' => false, 'reason' => 'not_enabled'];
+        }
+        if ($order->currency === null) {
+            return ['method' => 'card', 'available' => false, 'reason' => 'currency_required'];
+        }
+        return $this->pay->getCardAccount()->canAcceptPayments
+            ? ['method' => 'card', 'available' => true, 'reason' => null]
+            : ['method' => 'card', 'available' => false, 'reason' => 'card_account_not_ready'];
+    }
+
+    /** @return array<string, mixed>|null */
+    private static function jsonBody(AppRequest $req): ?array
+    {
+        if ($req->rawBody === '') {
+            return [];
+        }
+        $d = json_decode($req->rawBody, true);
+        return is_array($d) ? $d : null;
+    }
+
+    private function cardRoutes(AppRequest $req, string $path): AppResponse
+    {
+        if ($this->authorizeAdmin === null) {
+            return self::err(404, 'not_found', 'Route inconnue');
+        }
+        $admin = ($this->authorizeAdmin)($req);
+        if ($admin === null || $admin === false) {
+            return self::err(403, 'forbidden', 'Réservé au marchand');
+        }
+        try {
+            if ($path === '/card/account') {
+                return new AppResponse(200, ['account' => $this->pay->getCardAccount()->toAppJson()]);
+            }
+            $b = self::jsonBody($req);
+            if ($b === null) {
+                return self::err(400, 'invalid_request', 'Corps JSON illisible');
+            }
+            if (!is_string($b['returnUrl'] ?? null) || !is_string($b['refreshUrl'] ?? null)) {
+                return self::err(400, 'invalid_request', 'returnUrl et refreshUrl sont obligatoires');
+            }
+            $link = $this->pay->startCardOnboarding($b['returnUrl'], $b['refreshUrl'], $b['country'] ?? null, $b['email'] ?? null, $b['businessType'] ?? null);
+            return new AppResponse(200, ['url' => $link->url, 'kind' => $link->kind, 'expires_at' => $link->expiresAt, 'account' => $link->account->toAppJson()]);
+        } catch (TechnasPayException $e) {
+            return self::fromPayError($e);
+        }
+    }
+
+    /** Le cœur, sans framework. */
+    public function handle(AppRequest $req): AppResponse
+    {
+        $path = '/' . trim($req->path, '/');
+        $method = strtoupper($req->method);
+
+        if ($method === 'POST' && $path === '/webhook') {
+            if ($this->webhooks === null) {
+                return self::err(404, 'not_found', 'Webhook non branché');
+            }
+            $r = $this->pay->handleWebhook($req->rawBody, $req->header('x-technas-payment-signature'), $this->webhooks);
+            return new AppResponse($r['status'], $r['body']);
+        }
+
+        if (($method === 'GET' && $path === '/card/account') || ($method === 'POST' && $path === '/card/onboarding')) {
+            return $this->cardRoutes($req, $path);
+        }
+
+        $isPayment = preg_match('#^/payments/([^/]+)$#', $path, $pm) === 1;
+        $known = ($method === 'GET' && ($path === '/methods' || $isPayment)) || ($method === 'POST' && $path === '/payments');
+        if (!$known) {
+            return self::err(404, 'not_found', 'Route inconnue');
+        }
+
+        $user = ($this->authorize)($req);
+        if ($user === null || $user === false) {
+            return self::err(401, 'unauthorized', 'Connexion requise');
+        }
+
+        try {
+            if ($path === '/methods') {
+                $orderId = (string) ($req->query['orderId'] ?? '');
+                if ($orderId === '') {
+                    return self::err(400, 'invalid_request', 'orderId manquant');
+                }
+                $order = $this->resolve($orderId, $user);
+                if ($order === null) {
+                    return self::err(404, 'order_not_found', 'Commande introuvable');
+                }
+                return new AppResponse(200, [
+                    'amount' => $order->amount,
+                    'currency' => $order->currency,
+                    'methods' => [['method' => 'mobile_money', 'available' => true, 'reason' => null], $this->cardMethod($order)],
+                ]);
+            }
+
+            if ($path === '/payments') {
+                $b = self::jsonBody($req);
+                if ($b === null) {
+                    return self::err(400, 'invalid_request', 'Corps JSON illisible');
+                }
+                $orderId = (is_string($b['orderId'] ?? null) || is_int($b['orderId'] ?? null)) ? (string) $b['orderId'] : '';
+                if ($orderId === '') {
+                    return self::err(400, 'invalid_request', 'orderId manquant');
+                }
+                $payMethod = $b['method'] ?? 'mobile_money';
+                if ($payMethod !== 'mobile_money' && $payMethod !== 'card') {
+                    return self::err(400, 'invalid_request', 'method vaut "mobile_money" ou "card"');
+                }
+                if ($payMethod === 'card' && !$this->card) {
+                    return self::err(400, 'method_not_available', "Le paiement par carte n'est pas ouvert");
+                }
+                $order = $this->resolve($orderId, $user);
+                if ($order === null) {
+                    return self::err(404, 'order_not_found', 'Commande introuvable');
+                }
+                if ($payMethod === 'card' && $order->currency === null) {
+                    return self::err(400, 'currency_required', "La commande n'a pas de devise : carte impossible");
+                }
+                return new AppResponse(200, ['payment' => $this->start($orderId, $order, $payMethod)->toAppJson()]);
+            }
+
+            // GET /payments/{id} : seulement si la commande de ce paiement est à cet utilisateur.
+            try {
+                $payment = $this->pay->getPayment(rawurldecode($pm[1]));
+            } catch (TechnasPayException $e) {
+                if ($e->errorCode === 'payment_not_found') {
+                    return self::err(404, 'payment_not_found', 'Paiement introuvable');
+                }
+                throw $e;
+            }
+            if ($this->resolve(self::orderIdOf($payment->reference), $user) === null) {
+                return self::err(404, 'payment_not_found', 'Paiement introuvable');
+            }
+            return new AppResponse(200, ['payment' => $payment->toAppJson()]);
+        } catch (TechnasPayException $e) {
+            return self::fromPayError($e);
+        }
+    }
+}

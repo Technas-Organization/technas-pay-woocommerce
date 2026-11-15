@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  wordpress:
+    # Dépôt PUBLIC : machines GitHub, gratuites et isolées. Jamais les runners ARC du cluster ici
+    # (une PR de fork y exécuterait son code ; décision de Jonas, 15/11/2026).
+    name: Vrai WordPress + WooCommerce (wp-env)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          tools: composer
+          coverage: none
+      - name: Syntaxe PHP 8.1+
+        run: for f in technas-pay-woocommerce.php includes/*.php tests/*.php; do php -l "$f"; done
+      - name: Le SDK embarqué est celui de composer.lock
+        run: |
+          composer install --no-dev --no-interaction --no-progress
+          git diff --exit-code vendor/ || (echo "::error::vendor/ n'est pas à jour : lancez composer install --no-dev et commitez vendor/" && exit 1)
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Démarrer WordPress + WooCommerce
+        run: npx --yes @wordpress/env@10 start
+      - name: Parcours complet dans WooCommerce (faux transport vers Technas)
+        run: npx @wordpress/env@10 run cli wp eval-file wp-content/plugins/technas-pay-woocommerce/tests/integration.php interne
+      - name: Avis signé reçu sur la vraie adresse /?wc-api=technas_pay
+        run: |
+          code=$(curl -s -o /tmp/r.json -w '%{http_code}' -X POST 'http://localhost:8888/?wc-api=technas_pay' \
+            -H 'Content-Type: application/json' \
+            -H "X-Technas-Payment-Signature: $(cat tests/out/webhook-signature.txt)" \
+            --data-binary @tests/out/webhook-body.json)
+          cat /tmp/r.json; echo
+          test "$code" = "200"
+          bad=$(curl -s -o /dev/null -w '%{http_code}' -X POST 'http://localhost:8888/?wc-api=technas_pay' \
+            -H 'Content-Type: application/json' -H 'X-Technas-Payment-Signature: t=1,s=00' \
+            --data-binary @tests/out/webhook-bad-body.json)
+          test "$bad" = "400"
+          npx @wordpress/env@10 run cli wp eval-file wp-content/plugins/technas-pay-woocommerce/tests/integration.php http
+      - name: Journal en cas d'échec
+        if: failure()
+        run: npx @wordpress/env@10 logs --environment=development || true
+      - name: Paquet installable (zip)
+        run: |
+          mkdir -p dist/technas-pay-woocommerce
+          cp -r technas-pay-woocommerce.php includes assets languages vendor readme.txt LICENSE dist/technas-pay-woocommerce/
+          (cd dist && zip -qr technas-pay-woocommerce.zip technas-pay-woocommerce)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: technas-pay-woocommerce
+          path: dist/technas-pay-woocommerce.zip
