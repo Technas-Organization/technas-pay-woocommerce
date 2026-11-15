@@ -1,0 +1,127 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Technas Pay for WooCommerce 0.1.0\n"
+"Language: fr_FR\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Domain: technas-pay-woocommerce\n"
+
+msgid "Card (Technas Pay)"
+msgstr "Carte bancaire (Technas Pay)"
+
+msgid "Bank cards, Apple Pay and Google Pay. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
+msgstr "Cartes bancaires, Apple Pay et Google Pay. Exige un compte carte Technas Pay actif. La clé se règle dans « Mobile money (Technas Pay) »."
+
+msgid "Bank card"
+msgstr "Carte bancaire"
+
+msgid "Pay by card, Apple Pay or Google Pay."
+msgstr "Payez par carte, Apple Pay ou Google Pay."
+
+msgid "Mobile money (Technas Pay)"
+msgstr "Mobile money (Technas Pay)"
+
+msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription."
+msgstr "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… Le client choisit son pays et son opérateur sur la page Technas Pay. 2 % par paiement réussi, sans abonnement."
+
+msgid "Mobile money"
+msgstr "Mobile money"
+
+msgid "Pay with Orange Money, MTN MoMo, Moov Money, Wave or Mixx."
+msgstr "Payez avec Orange Money, MTN MoMo, Moov Money, Wave ou Mixx."
+
+msgid "Technas Pay key"
+msgstr "Clé Technas Pay"
+
+msgid "Starts with tps_test_ (test, no money moves) or tps_live_ (real payments). Shared by mobile money and card. Ask contact@technas.fr for a test key."
+msgstr "Commence par tps_test_ (test, aucun argent ne circule) ou tps_live_ (paiements réels). Commune au mobile money et à la carte. Demandez une clé de test à contact@technas.fr."
+
+msgid "Notification address"
+msgstr "Adresse d'avis"
+
+msgid "Give this address to Technas: it is how your orders get marked as paid. <br><code>%s</code>"
+msgstr "Donnez cette adresse à Technas : c'est par elle que vos commandes passent à « payée ». <br><code>%s</code>"
+
+msgid "This Technas Pay key looks wrong: it must start with tps_test_ or tps_live_. Copy it again."
+msgstr "Cette clé Technas Pay semble incorrecte : elle doit commencer par tps_test_ ou tps_live_. Copiez-la de nouveau."
+
+msgid "Enable"
+msgstr "Activer"
+
+msgid "Enable %s"
+msgstr "Activer %s"
+
+msgid "Title"
+msgstr "Titre"
+
+msgid "What the customer sees at checkout."
+msgstr "Ce que le client voit au moment de payer."
+
+msgid "Description"
+msgstr "Description"
+
+msgid "Order not found."
+msgstr "Commande introuvable."
+
+msgid "Technas Pay: the payment could not be started (%1$s)."
+msgstr "Technas Pay : le paiement n'a pas pu démarrer (%1$s)."
+
+msgid "The payment could not be started. Please try again."
+msgstr "Le paiement n'a pas pu démarrer. Veuillez réessayer."
+
+msgid "Technas Pay: waiting for the customer to pay on the payment page."
+msgstr "Technas Pay : en attente du paiement du client sur la page de paiement."
+
+msgid "This order has no Technas Pay payment to refund."
+msgstr "Cette commande n'a pas de paiement Technas Pay à rembourser."
+
+msgid "Your Technas Pay balance is too low: top it up with at least %1$s %2$s, then refund again."
+msgstr "Votre solde Technas Pay est insuffisant : rechargez-le d'au moins %1$s %2$s, puis remboursez de nouveau."
+
+msgid "This amount is more than what can still be refunded."
+msgstr "Ce montant dépasse ce qui peut encore être remboursé."
+
+msgid "Only a paid order can be refunded."
+msgstr "Seule une commande payée peut être remboursée."
+
+msgid "Technas Pay refused the refund (%s)."
+msgstr "Technas Pay a refusé le remboursement (%s)."
+
+msgid "Technas Pay refund: %1$s %2$s (%3$s). %4$s"
+msgstr "Remboursement Technas Pay : %1$s %2$s (%3$s). %4$s"
+
+msgid "Order %1$s at %2$s"
+msgstr "Commande %1$s chez %2$s"
+
+msgid "This payment method is not available in your country. Please choose another one."
+msgstr "Ce moyen de paiement n'est pas disponible dans votre pays. Veuillez en choisir un autre."
+
+msgid "Card payment is not available yet. Please choose mobile money."
+msgstr "Le paiement par carte n'est pas encore disponible. Veuillez choisir le mobile money."
+
+msgid "The amount is too low for this payment method."
+msgstr "Le montant est trop faible pour ce moyen de paiement."
+
+msgid "The payment service is temporarily unavailable. Please try again in a moment."
+msgstr "Le service de paiement est momentanément indisponible. Veuillez réessayer dans un instant."
+
+msgid "The payment could not be started. Please try again or choose another payment method."
+msgstr "Le paiement n'a pas pu démarrer. Veuillez réessayer ou choisir un autre moyen de paiement."
+
+msgid "Technas Pay: payment declined. This is not final, the customer can still pay on the same page."
+msgstr "Technas Pay : paiement refusé. Ce n'est pas définitif, le client peut encore payer sur la même page."
+
+msgid "Technas Pay: amount paid (%1$s) differs from the order total (%2$s). Check before shipping."
+msgstr "Technas Pay : le montant payé (%1$s) diffère du total de la commande (%2$s). Vérifiez avant d'expédier."
+
+msgid "Technas Pay: payment received, %1$s %2$s (reference %3$s)."
+msgstr "Technas Pay : paiement reçu, %1$s %2$s (référence %3$s)."
+
+msgid "Technas Pay: the payment link expired, nothing was paid. The customer can pay again from the order page."
+msgstr "Technas Pay : le lien de paiement a expiré, rien n'a été payé. Le client peut payer de nouveau depuis la page de la commande."
+
+msgid "Technas Pay refund update: %1$s %2$s, %3$s."
+msgstr "Remboursement Technas Pay : %1$s %2$s, %3$s."
+

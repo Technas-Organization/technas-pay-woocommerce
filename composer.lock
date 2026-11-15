@@ -1,0 +1,84 @@
+{
+    "_readme": [
+        "This file locks the dependencies of your project to a known state",
+        "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
+        "This file is @generated automatically"
+    ],
+    "content-hash": "a703f7aa200b583da87e7ac3125ab9fa",
+    "packages": [
+        {
+            "name": "technas/pay",
+            "version": "v0.1.0",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/Technas-Organization/technas-pay-php.git",
+                "reference": "a3d48a1e67ecd216a70c3ae599a4011258561935"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/a3d48a1e67ecd216a70c3ae599a4011258561935",
+                "reference": "a3d48a1e67ecd216a70c3ae599a4011258561935",
+                "shasum": ""
+            },
+            "require": {
+                "ext-curl": "*",
+                "ext-json": "*",
+                "php": ">=8.1"
+            },
+            "require-dev": {
+                "nyholm/psr7": "^1.8",
+                "phpunit/phpunit": "^10.5",
+                "psr/http-server-handler": "^1.0",
+                "symfony/http-foundation": "^6.4"
+            },
+            "suggest": {
+                "psr/http-server-handler": "Pour TechnasPay\\Bridge\\Psr15Handler (Slim, Mezzio…)",
+                "symfony/http-foundation": "Pour les routes Laravel et Symfony (TechnasPay\\Bridge\\SymfonyBridge)"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "TechnasPay\\": "src/"
+                }
+            },
+            "autoload-dev": {
+                "psr-4": {
+                    "TechnasPay\\Tests\\": "tests/"
+                }
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Encaisser du mobile money et des paiements par carte via Technas Pay depuis PHP : Laravel, Symfony, tout framework PSR-15.",
+            "homepage": "https://github.com/Technas-Organization/technas-pay",
+            "keywords": [
+                "fcfa",
+                "laravel",
+                "mobile money",
+                "payments",
+                "psr-15",
+                "symfony",
+                "technas",
+                "webhook",
+                "xaf",
+                "xof"
+            ],
+            "support": {
+                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.1.0",
+                "issues": "https://github.com/Technas-Organization/technas-pay-php/issues"
+            },
+            "time": "2026-11-15T01:03:51+00:00"
+        }
+    ],
+    "packages-dev": [],
+    "aliases": [],
+    "minimum-stability": "stable",
+    "stability-flags": {},
+    "prefer-stable": false,
+    "prefer-lowest": false,
+    "platform": {
+        "php": ">=8.1"
+    },
+    "platform-dev": {},
+    "plugin-api-version": "2.11.0"
+}

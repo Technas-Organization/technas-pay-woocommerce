@@ -1,0 +1,139 @@
+<?php
+
+defined('ABSPATH') || exit;
+
+use TechnasPay\Status;
+use TechnasPay\TechnasPay;
+use TechnasPay\TechnasPayException;
+
+/**
+ * Ce qui est commun aux deux moyens de paiement : la clé, le client Technas Pay, la création du
+ * paiement d'une commande (« une référence = un essai ») et ses métadonnées.
+ */
+final class Technas_Pay_WC
+{
+    /** Réglages communs, enregistrés par le moyen « Mobile money ». */
+    public const SETTINGS_OPTION = 'woocommerce_technas_pay_mobile_money_settings';
+
+    /** Métadonnées de commande. */
+    public const META_PAYMENT_ID = '_technas_pay_payment_id';
+    public const META_ATTEMPT = '_technas_pay_attempt';
+    public const META_METHOD = '_technas_pay_method';
+
+    /** Nombre maximal d'essais expirés sautés pour une commande. */
+    private const MAX_ATTEMPTS = 20;
+
+    public static function secret(): string
+    {
+        $settings = get_option(self::SETTINGS_OPTION, []);
+        return is_array($settings) ? trim((string) ($settings['secret'] ?? '')) : '';
+    }
+
+    public static function is_configured(): bool
+    {
+        return (bool) preg_match('/^tps_(live|test)_[^.\s]+\.[^.\s]+$/', self::secret());
+    }
+
+    public static function is_test_mode(): bool
+    {
+        return str_starts_with(self::secret(), 'tps_test_');
+    }
+
+    /** L'adresse d'avis à déclarer à Technas. */
+    public static function webhook_url(): string
+    {
+        return WC()->api_request_url('technas_pay');
+    }
+
+    /** Le client Technas Pay. Les tests injectent leur transport par le filtre `technas_pay_wc_transport`. */
+    public static function client(): TechnasPay
+    {
+        return new TechnasPay(
+            self::secret(),
+            (string) apply_filters('technas_pay_wc_base_url', TechnasPay::DEFAULT_BASE_URL),
+            apply_filters('technas_pay_wc_transport', null),
+        );
+    }
+
+    /**
+     * Crée (ou reprend) le paiement de cette commande. Une référence = un essai : `{commande}-{essai}`
+     * en mobile money, `{commande}-card-{essai}` par carte. Un essai expiré est sauté ; un essai en
+     * cours est rendu tel quel (jamais deux paiements pour une commande).
+     */
+    public static function start_payment(WC_Order $order, string $method, string $return_url): \TechnasPay\Model\Payment
+    {
+        $pay = self::client();
+        $attempt = max(1, (int) $order->get_meta(self::META_ATTEMPT));
+        $order_id = (string) $order->get_id();
+        $input = [
+            'amount' => self::amount_for($order, $method),
+            'customer' => array_filter([
+                'email' => $order->get_billing_email(),
+                'name' => trim($order->get_formatted_billing_full_name()) ?: $order->get_billing_email(),
+                'phone' => $order->get_billing_phone() ?: null,
+                'country' => $order->get_billing_country() ?: null,
+            ]),
+            'returnUrl' => $return_url,
+            'description' => sprintf(
+                /* translators: 1: order number, 2: shop name */
+                __('Order %1$s at %2$s', 'technas-pay-woocommerce'),
+                $order->get_order_number(),
+                get_bloginfo('name'),
+            ),
+            'metadata' => ['order_id' => $order_id, 'order_key' => $order->get_order_key(), 'source' => 'woocommerce'],
+        ];
+        if ($method === 'card') {
+            $input['method'] = 'card';
+            $input['currency'] = $order->get_currency();
+        }
+        // Mobile money : la boutique vend en F CFA, la devise suit le pays du client (XOF ou XAF, même montant).
+        for (; ; $attempt++) {
+            $input['reference'] = $method === 'card' ? "$order_id-card-$attempt" : Status::retryReference($order_id, $attempt);
+            try {
+                $payment = $pay->askForPayment($input);
+                break;
+            } catch (TechnasPayException $e) {
+                if ($e->errorCode === 'payment_expired' && $attempt < self::MAX_ATTEMPTS) {
+                    continue;
+                }
+                throw $e;
+            }
+        }
+        $order->update_meta_data(self::META_ATTEMPT, $attempt);
+        $order->update_meta_data(self::META_PAYMENT_ID, $payment->id);
+        $order->update_meta_data(self::META_METHOD, $method);
+        $order->save();
+        return $payment;
+    }
+
+    /** Mobile money : entier en F CFA. Carte : décimales permises. */
+    public static function amount_for(WC_Order $order, string $method): int|float
+    {
+        $total = (float) $order->get_total();
+        return $method === 'card' ? round($total, 2) : (int) round($total);
+    }
+
+    /** La commande d'un avis : par l'identifiant mis en métadonnées, puis par la référence (`42-3`, `42-card-1`). */
+    public static function order_for(\TechnasPay\Model\Payment $payment): ?WC_Order
+    {
+        $id = $payment->metadata['order_id'] ?? null;
+        if (!$id && preg_match('/^(\d+)-(?:card-)?\d+$/', $payment->reference, $m)) {
+            $id = $m[1];
+        }
+        $order = $id ? wc_get_order((int) $id) : false;
+        return $order instanceof WC_Order ? $order : null;
+    }
+
+    /** Un message d'erreur lisible par le client, jamais un détail technique ni le secret. */
+    public static function customer_message(TechnasPayException $e): string
+    {
+        return match ($e->errorCode) {
+            'country_not_allowed', 'country_not_available', 'currency_conversion_unavailable' => __('This payment method is not available in your country. Please choose another one.', 'technas-pay-woocommerce'),
+            'card_account_not_ready' => __('Card payment is not available yet. Please choose mobile money.', 'technas-pay-woocommerce'),
+            'amount_too_low' => __('The amount is too low for this payment method.', 'technas-pay-woocommerce'),
+            default => $e->retryable()
+                ? __('The payment service is temporarily unavailable. Please try again in a moment.', 'technas-pay-woocommerce')
+                : __('The payment could not be started. Please try again or choose another payment method.', 'technas-pay-woocommerce'),
+        };
+    }
+}

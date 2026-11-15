@@ -1,0 +1,126 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: Technas Pay for WooCommerce 0.1.0\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n > 1);\n"
+"X-Domain: technas-pay-woocommerce\n"
+
+msgid "Card (Technas Pay)"
+msgstr ""
+
+msgid "Bank cards, Apple Pay and Google Pay. Requires an active Technas Pay card account. The key is set in « Mobile money (Technas Pay) »."
+msgstr ""
+
+msgid "Bank card"
+msgstr ""
+
+msgid "Pay by card, Apple Pay or Google Pay."
+msgstr ""
+
+msgid "Mobile money (Technas Pay)"
+msgstr ""
+
+msgid "Orange Money, MTN MoMo, Moov Money, Wave, Mixx… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription."
+msgstr ""
+
+msgid "Mobile money"
+msgstr ""
+
+msgid "Pay with Orange Money, MTN MoMo, Moov Money, Wave or Mixx."
+msgstr ""
+
+msgid "Technas Pay key"
+msgstr ""
+
+msgid "Starts with tps_test_ (test, no money moves) or tps_live_ (real payments). Shared by mobile money and card. Ask contact@technas.fr for a test key."
+msgstr ""
+
+msgid "Notification address"
+msgstr ""
+
+msgid "Give this address to Technas: it is how your orders get marked as paid. <br><code>%s</code>"
+msgstr ""
+
+msgid "This Technas Pay key looks wrong: it must start with tps_test_ or tps_live_. Copy it again."
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Enable %s"
+msgstr ""
+
+msgid "Title"
+msgstr ""
+
+msgid "What the customer sees at checkout."
+msgstr ""
+
+msgid "Description"
+msgstr ""
+
+msgid "Order not found."
+msgstr ""
+
+msgid "Technas Pay: the payment could not be started (%1$s)."
+msgstr ""
+
+msgid "The payment could not be started. Please try again."
+msgstr ""
+
+msgid "Technas Pay: waiting for the customer to pay on the payment page."
+msgstr ""
+
+msgid "This order has no Technas Pay payment to refund."
+msgstr ""
+
+msgid "Your Technas Pay balance is too low: top it up with at least %1$s %2$s, then refund again."
+msgstr ""
+
+msgid "This amount is more than what can still be refunded."
+msgstr ""
+
+msgid "Only a paid order can be refunded."
+msgstr ""
+
+msgid "Technas Pay refused the refund (%s)."
+msgstr ""
+
+msgid "Technas Pay refund: %1$s %2$s (%3$s). %4$s"
+msgstr ""
+
+msgid "Order %1$s at %2$s"
+msgstr ""
+
+msgid "This payment method is not available in your country. Please choose another one."
+msgstr ""
+
+msgid "Card payment is not available yet. Please choose mobile money."
+msgstr ""
+
+msgid "The amount is too low for this payment method."
+msgstr ""
+
+msgid "The payment service is temporarily unavailable. Please try again in a moment."
+msgstr ""
+
+msgid "The payment could not be started. Please try again or choose another payment method."
+msgstr ""
+
+msgid "Technas Pay: payment declined. This is not final, the customer can still pay on the same page."
+msgstr ""
+
+msgid "Technas Pay: amount paid (%1$s) differs from the order total (%2$s). Check before shipping."
+msgstr ""
+
+msgid "Technas Pay: payment received, %1$s %2$s (reference %3$s)."
+msgstr ""
+
+msgid "Technas Pay: the payment link expired, nothing was paid. The customer can pay again from the order page."
+msgstr ""
+
+msgid "Technas Pay refund update: %1$s %2$s, %3$s."
+msgstr ""
+

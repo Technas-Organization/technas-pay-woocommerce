@@ -1,0 +1,14 @@
+# technas/pay (PHP)
+
+> SDK PHP 8.1+ (côté serveur : Laravel, Symfony, Slim, PHP nu) pour encaisser du mobile money en Afrique et des paiements par carte via Technas Pay, rembourser et recharger son solde. Aucune dépendance (extension curl). Montant seul, en F CFA : la devise (XOF ou XAF) suit le pays du client.
+
+Agents de code : lisez d'abord AGENTS.md. WooCommerce : extension technas-pay-woocommerce, sans code.
+
+Une référence = un essai : `Status::retryReference($orderId, $attempt)`. Relancez avec une NOUVELLE référence seulement après payment.expired (`Status::canRetry`), jamais sur failed.
+
+Routes toutes faites pour une app Flutter : `$pay->appRoutes(authorize:, resolveOrder:)` + `SymfonyBridge::handle` (Laravel, Symfony) ou `Psr15Handler`.
+
+- [AGENTS.md](AGENTS.md) : règles pour un agent de code
+- [README.md](README.md) : guide complet
+- [src/TechnasPay.php](src/TechnasPay.php) : chaque méthode et sa documentation
+- [examples/](examples) : Laravel, Symfony, PHP sans framework
