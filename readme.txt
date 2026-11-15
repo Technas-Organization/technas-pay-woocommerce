@@ -8,7 +8,7 @@ Stable tag: 0.1.2
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
-Accept mobile money (Orange Money, MTN MoMo, Moov, Wave…) and card payments in West and Central Africa. Card: 1% (plus your card account fees). Mobile money: 2% (operator fees are paid by the customer). No subscription.
+Accept mobile money (Orange Money, MTN MoMo, Moov, Wave…) and card payments in West and Central Africa. Card: 1% (plus your card account fees, depending on the country: about 1.5% + €0.25 in Europe). Mobile money: 2% (operator fees are paid by the customer). No subscription.
 
 == Description ==
 
