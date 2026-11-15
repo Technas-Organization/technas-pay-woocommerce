@@ -55,7 +55,7 @@ jobs:
         run: |
           composer install --no-dev --no-interaction --no-progress
           git diff --exit-code vendor/ || (echo "::error::vendor/ n'est pas à jour : lancez composer install --no-dev et commitez vendor/" && exit 1)
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "20"
       - name: Démarrer WordPress + WooCommerce
