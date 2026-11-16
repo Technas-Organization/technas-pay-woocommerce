@@ -188,6 +188,68 @@ final class ClientTest extends TestCase
         self::assertSame([], $t->queue);
     }
 
+    public function testAnnulerLAncienEssaiPuisCreerLeNouveau(): void
+    {
+        $annule = ['id' => 'pay_1', 'reference' => 'F-1', 'status' => 'expired', 'checkout_url' => null,
+            'canceled_at' => '2026-11-16T09:00:00Z', 'cancel_reason' => 'canceled_by_partner'] + self::PAYMENT;
+        $t = new FakeTransport([
+            ['status' => 200, 'body' => $annule],
+            ['status' => 200, 'body' => $annule],
+            ['status' => 409, 'body' => ['code' => 'payment_in_progress', 'message' => 'm']],
+            ['status' => 409, 'body' => ['code' => 'payment_already_completed', 'message' => 'm']],
+            ['status' => 404, 'body' => ['code' => 'payment_not_found', 'message' => 'm']],
+        ]);
+        $pay = $this->pay($t);
+        $p = $pay->cancelPayment('pay_1');
+        self::assertSame(['POST', 'https://gw.test/v1/payments/pay_1/cancel', '{}'], [$t->calls[0]['method'], $t->calls[0]['url'], $t->calls[0]['body']]);
+        self::assertSame('Bearer ' . self::API_KEY, $t->calls[0]['headers']['Authorization']);
+        self::assertSame(['expired', null, '2026-11-16T09:00:00Z', 'canceled_by_partner'], [$p->status, $p->checkoutUrl, $p->canceledAt, $p->cancelReason]);
+        self::assertTrue(Status::canRetry($p->status));
+        self::assertSame('2026-11-16T09:00:00Z', $pay->cancelPayment('pay_1')->canceledAt, 'rejouer rend le même résultat');
+        foreach ([['payment_in_progress', true], ['payment_already_completed', false]] as [$code, $retryable]) {
+            try {
+                $pay->cancelPayment('pay_1');
+                self::fail("$code non levé");
+            } catch (TechnasPayException $e) {
+                self::assertSame([$code, 409, $retryable], [$e->errorCode, $e->status, $e->retryable()]);
+            }
+        }
+        // Même encodage que getPayment : l'identifiant reste dans son segment.
+        try {
+            $pay->cancelPayment('../balance');
+        } catch (TechnasPayException) {
+        }
+        self::assertSame('https://gw.test/v1/payments/..%2Fbalance/cancel', $t->calls[4]['url']);
+        self::assertCount(5, $t->calls);
+        foreach (['', '  '] as $vide) {
+            try {
+                $pay->cancelPayment($vide);
+                self::fail('identifiant vide accepté');
+            } catch (TechnasPayException $e) {
+                self::assertSame(['invalid_request', 0], [$e->errorCode, $e->status]);
+            }
+        }
+        self::assertCount(5, $t->calls, 'identifiant vide : aucun appel');
+        // Un paiement lu sans annulation n'a ni canceledAt ni cancelReason.
+        $lu = \TechnasPay\Model\Payment::fromApi(self::PAYMENT);
+        self::assertSame([null, null, null], [$lu->canceledAt, $lu->cancelReason, $lu->reason]);
+    }
+
+    public function testAvisExpireDitPourquoi(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $seen = [];
+        $h = new WebhookHandlers(onExpired: function ($e) use (&$seen) {
+            $seen[] = var_export($e->payment->reason, true) . '/' . var_export($e->payment->canceledAt, true);
+        });
+        $base = ['id' => 'p', 'reference' => 'F-1', 'status' => 'expired', 'amount' => 1, 'currency' => 'XOF'];
+        foreach ([$base + ['reason' => 'canceled', 'canceled_at' => '2026-11-16T09:00:00Z'], $base + ['reason' => 'timeout'], $base] as $data) {
+            $body = (string) json_encode(['id' => 'e', 'type' => 'payment.expired', 'created_at' => 'x', 'data' => $data]);
+            self::assertSame(200, $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h)['status']);
+        }
+        self::assertSame(["'canceled'/'2026-11-16T09:00:00Z'", "'timeout'/NULL", 'NULL/NULL'], $seen);
+    }
+
     public function testWebhooks(): void
     {
         $pay = $this->pay(new FakeTransport());

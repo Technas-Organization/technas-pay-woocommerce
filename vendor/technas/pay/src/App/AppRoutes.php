@@ -16,11 +16,13 @@ use TechnasPay\Webhook\WebhookHandlers;
  * `contract/app-contract.v1.json`, rejoué ici ET par les SDK Node, Python, Dart et le client Flutter.
  *
  * Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /payments/{id}`,
+ * `POST /payments/{id}/cancel` (le client change d'offre : l'essai affiché est annulé),
  * `POST /webhook`, et pour le marchand `GET /card/account`, `POST /card/onboarding`.
  *
  * Vous ne fournissez que `authorize` (votre authentification) et `resolveOrder` (la commande relue
- * EN BASE). Le montant ne vient jamais de l'app. Les essais expirés, ou d'un autre montant
- * (le client a changé d'offre), sont sautés tout seuls.
+ * EN BASE). Le montant ne vient jamais de l'app. Les essais expirés sont sautés tout seuls ; un essai
+ * d'un autre montant (le client a changé d'offre) est annulé s'il est encore ouvert, puis sauté. Payé,
+ * ou demande en cours chez l'opérateur : aucun second paiement, l'erreur remonte à l'app.
  */
 final class AppRoutes
 {
@@ -96,10 +98,45 @@ final class AppRoutes
             try {
                 return $this->pay->askForPayment($input);
             } catch (TechnasPayException $e) {
-                if (($e->errorCode === 'payment_expired' || $e->errorCode === 'reference_conflict') && $attempt < $this->maxAttempts) {
-                    continue;
+                if ($attempt >= $this->maxAttempts) {
+                    throw $e;
                 }
-                throw $e;
+                if ($e->errorCode === 'payment_expired') {
+                    continue; // essai expiré : le suivant
+                }
+                if ($e->errorCode !== 'reference_conflict') {
+                    throw $e;
+                }
+                // Le client a changé d'offre (autre montant) : l'ancien essai est annulé s'il est encore
+                // ouvert, puis le suivant est créé. Payé ou demande en cours chez l'opérateur : aucun
+                // second paiement, l'erreur remonte à l'app.
+                $this->closePrevious($input['reference']);
+            }
+        }
+    }
+
+    private function closePrevious(string $reference): void
+    {
+        try {
+            $previous = $this->pay->getPaymentByReference($reference);
+        } catch (TechnasPayException $e) {
+            if ($e->errorCode === 'payment_not_found') {
+                return;
+            }
+            throw $e;
+        }
+        if ($previous->status === 'completed') {
+            throw new TechnasPayException('payment_already_completed', "L'essai précédent de cette commande est déjà payé", 409);
+        }
+        if ($previous->status !== 'expired') {
+            try {
+                $this->pay->cancelPayment($previous->id);
+            } catch (TechnasPayException $e) {
+                // 404 (paiement introuvable, ou serveur qui n'a pas encore l'annulation) : essai suivant,
+                // comme avant. Tout autre refus remonte : aucun second paiement.
+                if ($e->status !== 404) {
+                    throw $e;
+                }
             }
         }
     }
@@ -180,8 +217,10 @@ final class AppRoutes
         }
 
         $paymentId = preg_match('#^/payments/([^/]+)$#', $path, $pm) === 1 ? rawurldecode($pm[1]) : '';
-        $isPayment = $paymentId !== '';
-        $known = ($method === 'GET' && ($path === '/methods' || $isPayment)) || ($method === 'POST' && $path === '/payments');
+        $cancelId = preg_match('#^/payments/([^/]+)/cancel$#', $path, $cm) === 1 ? rawurldecode($cm[1]) : '';
+        $isCancel = $cancelId !== '';
+        $known = ($method === 'GET' && ($path === '/methods' || $paymentId !== ''))
+            || ($method === 'POST' && ($path === '/payments' || $isCancel));
         if (!$known) {
             return self::err(404, 'not_found', 'Route inconnue');
         }
@@ -234,9 +273,10 @@ final class AppRoutes
                 return new AppResponse(200, ['payment' => $this->start($orderId, $order, $payMethod)->toAppJson()]);
             }
 
-            // GET /payments/{id} : seulement si la commande de ce paiement est à cet utilisateur.
+            // GET /payments/{id} et POST /payments/{id}/cancel : seulement si la commande de ce paiement
+            // est à cet utilisateur.
             try {
-                $payment = $this->pay->getPayment($paymentId);
+                $payment = $this->pay->getPayment($isCancel ? $cancelId : $paymentId);
             } catch (TechnasPayException $e) {
                 if ($e->errorCode === 'payment_not_found') {
                     return self::err(404, 'payment_not_found', 'Paiement introuvable');
@@ -245,6 +285,10 @@ final class AppRoutes
             }
             if ($this->resolve(self::orderIdOf($payment->reference), $user) === null) {
                 return self::err(404, 'payment_not_found', 'Paiement introuvable');
+            }
+            if ($isCancel) {
+                // Le client change d'offre : l'essai affiché est annulé avant d'en démarrer un autre.
+                $payment = $this->pay->cancelPayment($payment->id);
             }
             return new AppResponse(200, ['payment' => $payment->toAppJson()]);
         } catch (TechnasPayException $e) {

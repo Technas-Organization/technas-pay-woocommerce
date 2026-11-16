@@ -104,6 +104,15 @@ msgstr "Le paiement par carte n'est pas encore disponible. Veuillez choisir le m
 msgid "The amount is too low for this payment method."
 msgstr "Le montant est trop faible pour ce moyen de paiement."
 
+msgid "A payment is already in progress for this order. Complete it, or try again in a few minutes."
+msgstr "Un paiement est déjà en cours pour cette commande. Terminez-le, ou réessayez dans quelques minutes."
+
+msgid "This order is already paid."
+msgstr "Cette commande est déjà payée."
+
+msgid "Technas Pay: the previous payment link was canceled (the customer changed the payment method or the order total changed). Nothing was paid on it."
+msgstr "Technas Pay : l'ancien lien de paiement a été annulé (le client a changé de moyen de paiement ou le total de la commande a changé). Rien n'a été payé dessus."
+
 msgid "The payment service is temporarily unavailable. Please try again in a moment."
 msgstr "Le service de paiement est momentanément indisponible. Veuillez réessayer dans un instant."
 

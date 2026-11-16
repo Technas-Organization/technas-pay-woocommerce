@@ -30,6 +30,8 @@ final class Technas_Pay_WC {
 	/** Toutes les références et tous les paiements créés pour la commande (un avis n'agit que sur eux). */
 	public const META_REFERENCES  = '_technas_pay_references';
 	public const META_PAYMENT_IDS = '_technas_pay_payment_ids';
+	/** Le dernier paiement créé par moyen (`mobile_money`, `card`) : un seul paiement ouvert par commande. */
+	public const META_LAST_BY_METHOD = '_technas_pay_last_payment_by_method';
 	/** Le paiement qui a payé la commande (un second paiement est signalé, jamais ignoré). */
 	public const META_PAID_PAYMENT = '_technas_pay_paid_payment_id';
 	/** Paiements reçus à un autre montant que la commande (ancien essai) : à rembourser si elle est payée autrement. */
@@ -221,10 +223,14 @@ final class Technas_Pay_WC {
 	/**
 	 * Crée (ou reprend) le paiement de cette commande. Une référence = un essai : `{commande}-{essai}`
 	 * en mobile money, `{commande}-card-{essai}` par carte. Un essai expiré est sauté ; un essai en
-	 * cours est rendu tel quel (jamais deux paiements pour une commande).
+	 * cours est rendu tel quel. Un seul paiement ouvert par commande : le dernier essai de l'AUTRE moyen
+	 * encore ouvert est annulé d'abord, et l'essai d'un ancien total aussi avant le suivant. Si
+	 * l'annulation est refusée (`payment_in_progress`, `payment_already_completed`), aucun nouveau
+	 * paiement n'est créé : l'erreur remonte. Une annulation qui répond 404 ne bloque rien.
 	 */
 	public static function start_payment( WC_Order $order, string $method, string $return_url ): \TechnasPay\Model\Payment {
-		$pay      = self::client();
+		$pay = self::client();
+		self::close_other_method( $pay, $order, $method );
 		$attempt  = max( 1, (int) $order->get_meta( self::META_ATTEMPT ) );
 		$order_id = (string) $order->get_id();
 		$input    = array(
@@ -263,14 +269,18 @@ final class Technas_Pay_WC {
 				$payment = $pay->askForPayment( $input );
 				break;
 			} catch ( TechnasPayException $e ) {
-				// Essai expiré, ou d'un autre montant (le total a changé depuis le premier essai,
-				// reference_conflict) : on passe au suivant, jamais un refus au client.
-				if ( ( $e->errorCode === 'payment_expired' || $e->errorCode === 'reference_conflict' ) && $attempt < self::MAX_ATTEMPTS ) {
-					continue;
+				if ( $attempt >= self::MAX_ATTEMPTS || ( $e->errorCode !== 'payment_expired' && $e->errorCode !== 'reference_conflict' ) ) {
+					throw $e;
 				}
-				throw $e;
+				// Essai expiré : le suivant. Essai d'un autre montant (le total a changé depuis le premier
+				// essai, reference_conflict) : l'ancien est annulé s'il est encore ouvert, puis le suivant.
+				if ( $e->errorCode === 'reference_conflict' ) {
+					self::close_previous( $pay, $input['reference'] );
+				}
 			}
 		}
+		// Avant META_PAYMENT_ID et META_METHOD : une commande d'avant 0.4.0 y lit encore son dernier paiement.
+		$order->update_meta_data( self::META_LAST_BY_METHOD, array( $method => $payment->id ) + self::last_by_method( $order ) );
 		$order->update_meta_data( self::META_ATTEMPT, $attempt );
 		$order->update_meta_data( self::META_PAYMENT_ID, $payment->id );
 		$order->update_meta_data( self::META_METHOD, $method );
@@ -278,6 +288,81 @@ final class Technas_Pay_WC {
 		$order->update_meta_data( self::META_PAYMENT_IDS, array_values( array_unique( array_merge( self::meta_list( $order, self::META_PAYMENT_IDS ), array( $payment->id ) ) ) ) );
 		$order->save();
 		return $payment;
+	}
+
+	/**
+	 * Le dernier paiement de chaque moyen. Une commande d'avant 0.4.0 n'a que le dernier paiement
+	 * (`META_PAYMENT_ID`) et son moyen (`META_METHOD`).
+	 *
+	 * @return array<string, string>
+	 */
+	public static function last_by_method( WC_Order $order ): array {
+		$value = $order->get_meta( self::META_LAST_BY_METHOD );
+		if ( is_array( $value ) ) {
+			return array_filter( $value, static fn ( $id ): bool => is_string( $id ) && $id !== '' );
+		}
+		$id     = (string) $order->get_meta( self::META_PAYMENT_ID );
+		$method = (string) $order->get_meta( self::META_METHOD );
+		return $id !== '' && $method !== '' ? array( $method => $id ) : array();
+	}
+
+	/**
+	 * Le client paie par un moyen alors que le dernier essai de l'autre est encore ouvert (`pending`,
+	 * `failed`) : cet essai est annulé d'abord, sinon la commande pourrait être payée deux fois
+	 * (mobile money puis carte). Déjà payé : `payment_already_completed`, aucun nouveau paiement.
+	 */
+	private static function close_other_method( TechnasPay $pay, WC_Order $order, string $method ): void {
+		foreach ( self::last_by_method( $order ) as $other => $id ) {
+			if ( $other === $method ) {
+				continue;
+			}
+			try {
+				$previous = $pay->getPayment( $id );
+			} catch ( TechnasPayException $e ) {
+				if ( $e->status === 404 ) {
+					continue;
+				}
+				throw $e;
+			}
+			self::cancel_if_open( $pay, $previous, array( 'pending', 'failed' ) );
+		}
+	}
+
+	/** Changement de total : l'essai de cette référence est relu, puis annulé s'il est encore ouvert. */
+	private static function close_previous( TechnasPay $pay, string $reference ): void {
+		try {
+			$previous = $pay->getPaymentByReference( $reference );
+		} catch ( TechnasPayException $e ) {
+			if ( $e->status === 404 ) {
+				return;
+			}
+			throw $e;
+		}
+		self::cancel_if_open( $pay, $previous, null );
+	}
+
+	/**
+	 * Payé : `payment_already_completed`. Ouvert (`$open`, ou tout sauf `expired` si `null`) : annulé.
+	 * Une annulation qui répond 404 (paiement introuvable, ou service qui ne l'a pas encore) ne bloque
+	 * rien ; `payment_in_progress` et `payment_already_completed` remontent.
+	 *
+	 * @param list<string>|null $open
+	 */
+	private static function cancel_if_open( TechnasPay $pay, \TechnasPay\Model\Payment $previous, ?array $open ): void {
+		if ( $previous->status === 'completed' ) {
+			throw new TechnasPayException( 'payment_already_completed', 'An earlier payment for this order is already paid', 409 );
+		}
+		$is_open = $open === null ? $previous->status !== 'expired' : in_array( $previous->status, $open, true );
+		if ( ! $is_open ) {
+			return;
+		}
+		try {
+			$pay->cancelPayment( $previous->id );
+		} catch ( TechnasPayException $e ) {
+			if ( $e->status !== 404 ) {
+				throw $e;
+			}
+		}
 	}
 
 	/** @return list<string> */
@@ -343,6 +428,9 @@ final class Technas_Pay_WC {
 			// Seuil d'identité du compte atteint : rien à dire au client sur le compte du marchand.
 			'kyc_required' => __( 'Mobile money payment is not available right now. Please choose card or try again later.', 'technas-pay-woocommerce' ),
 			'amount_too_low' => __( 'The amount is too low for this payment method.', 'technas-pay-woocommerce' ),
+			// Un seul paiement ouvert par commande : l'ancien n'a pas pu être fermé.
+			'payment_in_progress' => __( 'A payment is already in progress for this order. Complete it, or try again in a few minutes.', 'technas-pay-woocommerce' ),
+			'payment_already_completed' => __( 'This order is already paid.', 'technas-pay-woocommerce' ),
 			default => $e->retryable()
 				? __( 'The payment service is temporarily unavailable. Please try again in a moment.', 'technas-pay-woocommerce' )
 				: __( 'The payment could not be started. Please try again or choose another payment method.', 'technas-pay-woocommerce' ),

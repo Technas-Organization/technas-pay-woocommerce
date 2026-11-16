@@ -33,6 +33,9 @@ final class AppContractTest extends TestCase
         foreach ($contract['cases'] as $c) {
             $out[$c['name']] = [$c];
         }
+        if (count($out) !== 31) {
+            throw new \LogicException('le contrat v1 a 31 cas, lu : ' . count($out));
+        }
         return $out;
     }
 
@@ -77,7 +80,31 @@ final class AppContractTest extends TestCase
             foreach ($e['body_includes'] ?? [] as $k => $v) {
                 self::assertEquals($v, $gw->jsonBody($i)[$k], $k);
             }
+            parse_str((string) parse_url($gw->calls[$i]['url'], PHP_URL_QUERY), $query);
+            foreach ($e['query_includes'] ?? [] as $k => $v) {
+                self::assertSame($v, $query[$k] ?? null, "paramètre $k");
+            }
         }
+    }
+
+    public function testLeContratA31Cas(): void
+    {
+        self::assertCount(31, self::cases());
+    }
+
+    public function testChangementDOffreAncienEssaiDejaPayeAucunSecondPaiement(): void
+    {
+        $c = ['user' => 'u1', 'orders' => ['42' => ['amount' => 7500, 'customer' => ['email' => 'awa@exemple.tg', 'name' => 'Awa Mensah']]]];
+        $gw = new FakeTransport([
+            ['status' => 409, 'body' => ['code' => 'reference_conflict', 'message' => 'm']],
+            ['status' => 200, 'body' => ['id' => 'pay_1', 'reference' => '42-1', 'amount' => 5000, 'status' => 'completed']],
+        ]);
+        $r = self::routes($c, new TechnasPay(self::SECRET, 'https://gw.test', $gw))
+            ->handle(new AppRequest('POST', '/payments', [], [], (string) json_encode(['orderId' => '42'])));
+        self::assertSame(409, $r->status);
+        self::assertSame(['payment_already_completed', false], [json_decode($r->json(), true)['code'], json_decode($r->json(), true)['retryable']]);
+        self::assertCount(2, $gw->calls, 'ni annulation ni second paiement');
+        self::assertSame('https://gw.test/v1/payments?reference=42-1', $gw->calls[1]['url']);
     }
 
     public function testWebhookSigneRefuseEtNonBranche(): void

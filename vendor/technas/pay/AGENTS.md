@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.3
+composer require technas/pay:^0.4
 ```
 
 ## Quelle méthode pour quoi
@@ -26,7 +26,7 @@ composer require technas/pay:^0.3
 | Savoir qu'elle est payée | avis signé : `$pay->handleWebhook($corpsBrut, $signature, new WebhookHandlers(onCompleted: …))` |
 | Rattraper un avis manqué | `$pay->getPaymentByReference($reference)` |
 | Savoir si on peut relancer | `onExpired`, ou `Status::canRetry($pay->getPayment($id)->status)` |
-| Le client change d'offre ou revient plus tard | nouvel essai `Status::retryReference($factureId, $n + 1)` ; au retour, `$pay->getPayment($dernierPaymentId)` d'abord |
+| Le client change d'offre ou revient plus tard | `$pay->cancelPayment($ancienId)`, puis nouvel essai `Status::retryReference($factureId, $n + 1)` ; au retour, `$pay->getPayment($dernierPaymentId)` d'abord |
 | Rembourser | `$pay->refund($paymentId, amount: ?, fees: ?, reference: ?)` |
 | Noter un remboursement fait hors Technas | `$pay->recordExternalRefund($paymentId, 2000, 'Flooz')` |
 | Recharger le solde | `$pay->topUpBalance(20000, 'XOF')`, ouvrir `checkoutUrl` ; `onTopUp` |
@@ -50,7 +50,7 @@ composer require technas/pay:^0.3
 
 ## App mobile (Flutter)
 
-Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: …, returnUrl: …, webhooks: …, card: ?, authorizeAdmin: ?)`, montées sous `/api/technas-pay` par `SymfonyBridge::handle($routes, $request, $path)` (Laravel, Symfony) ou `new Psr15Handler($routes, $psr17, $psr17)`. `resolveOrder($orderId, $user)` relit la commande EN BASE et rend `null` si elle n'est pas à cet utilisateur. N'y mettez jamais un montant reçu de l'app. Côté app : `TechnasPayClient(baseUrl: '…/api/technas-pay')`.
+Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: …, returnUrl: …, webhooks: …, card: ?, authorizeAdmin: ?)`, montées sous `/api/technas-pay` par `SymfonyBridge::handle($routes, $request, $path)` (Laravel, Symfony) ou `new Psr15Handler($routes, $psr17, $psr17)`. `resolveOrder($orderId, $user)` relit la commande EN BASE et rend `null` si elle n'est pas à cet utilisateur. N'y mettez jamais un montant reçu de l'app. Le client change d'offre : l'app appelle `POST /payments/{id}/cancel` sur l'essai affiché, puis `POST /payments` ; si la commande a changé de montant, `POST /payments` annule lui-même l'ancien essai encore ouvert. Côté app : `TechnasPayClient(baseUrl: '…/api/technas-pay')`.
 
 ## Obligatoire
 
@@ -128,7 +128,8 @@ Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: �
 
 - **Une référence = un essai.** Nouvelle offre, ou retour après expiration : un NOUVEL essai, avec une nouvelle référence `Status::retryReference($factureId, $n + 1)` (`$n` gardé en base). Réutiliser la référence d'un autre montant lève `reference_conflict` (409) ; celle d'un essai expiré, `payment_expired` (409). Les routes toutes faites (`appRoutes`) le font seules.
 - **Une facture n'est payée QUE sur `payment.completed`** (avis signé, `onCompleted`). Jamais sur `returnUrl`, jamais à l'ouverture de la page.
-- **Un essai non payé ne bloque jamais un nouvel essai.** `pending` ou `failed` et le client change d'offre : créez le nouvel essai, ne refusez pas. `expired` : marquez la tentative expirée et laissez recommencer.
+- **Un essai non payé ne bloque jamais un nouvel essai.** `pending` ou `failed` et le client change d'offre : ANNULEZ l'ancien essai (`$pay->cancelPayment($ancienId)`), puis créez le nouveau avec une NOUVELLE référence ; ne refusez pas. `expired` : marquez la tentative expirée et laissez recommencer.
+- **`cancelPayment` refuse quand c'est trop tard** : `payment_already_completed` (le client a payé l'ancienne offre : relisez le paiement, ne créez rien) ; `payment_in_progress` (une demande est en cours chez l'opérateur : ne créez PAS de second paiement, attendez l'avis de l'issue). Un paiement annulé reste `expired` (`canceledAt`, `cancelReason`), et son avis `payment.expired` porte `reason` = `canceled` (`timeout` pour une échéance passée).
 - **Au retour du client**, vérifiez avec `$pay->getPayment($dernierPaymentId)` avant de dire quoi que ce soit ; ne vous fiez jamais seulement à votre base.
 - **Un ancien essai payé APRÈS le nouveau** (le client a payé les deux pages) : n'activez rien deux fois ; remboursez l'essai en trop avec `$pay->refund($paymentId)`.
 
@@ -149,7 +150,12 @@ function payer(Facture $facture, int $montant): string
         if ($dernier->status !== 'expired' && $dernier->amount === $montant && $dernier->checkoutUrl !== null) {
             return $dernier->checkoutUrl; // même offre, essai en cours : la même page
         }
-        // pending ou failed d'une autre offre, ou expired : nouvel essai, jamais un refus.
+        if ($dernier->status !== 'expired') {
+            // Autre offre : l'ancien lien est fermé d'abord. payment_in_progress (demande en cours chez
+            // l'opérateur : attendre l'avis) ou payment_already_completed (payé : relire) remontent,
+            // et AUCUN second paiement n'est créé.
+            $pay->cancelPayment($dernier->id);
+        }
     }
     $facture->tentative += 1; // n + 1, gardé en base
     $payment = $pay->askForPayment([
@@ -259,7 +265,8 @@ En réel, un compte sans pièce d'identité vérifiée voit ses **nouveaux** pai
 | `fx_mode_unavailable`, `fx_channel_unavailable` | Mode `converted` pas ouvert : proposer `local` (avec l'accord de l'utilisateur sur le risque) ou rester en `none` |
 | `quote_expired` | Le client rechoisit son pays sur la page, rien à faire côté code |
 | `reference_conflict` | Même référence, autres valeurs : ne pas réutiliser la référence |
-| `payment_in_progress` | Réessayer dans une minute, même appel |
+| `payment_already_completed` | `cancelPayment` : le paiement est déjà payé. Relire le paiement ; ne créer aucun nouvel essai |
+| `payment_in_progress` | Réessayer dans une minute, même appel. Sur `cancelPayment` : ne créez PAS de second paiement, attendez l'avis de l'issue |
 | `payment_not_found`, `refund_not_found` | Mauvais identifiant ou autre compte |
 | `payment_expired` | Cette référence est un essai expiré : nouveau paiement avec une NOUVELLE référence, jamais le même appel |
 | `payment_not_refundable` | Seul un paiement `completed` se rembourse |

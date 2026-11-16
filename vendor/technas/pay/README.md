@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.3
+composer require technas/pay:^0.4
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -91,13 +91,14 @@ Route::any('technas-pay/{path}', fn (Request $request, string $path) => SymfonyB
 
 Symfony : `SymfonyBridge::handle($routes, $request, $path)` dans un contrôleur (`examples/symfony-controller.php`). Slim, Mezzio : `new Psr15Handler($routes, $psr17, $psr17, '/api/technas-pay')`.
 
-Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /payments/{id}`, `POST /webhook` (adresse à déclarer à Technas). Les essais expirés sont sautés tout seuls (`42-1`, `42-2`…) : rien à stocker. Carte : `card: true`, et `authorizeAdmin` pour l'écran du marchand (`GET /card/account`, `POST /card/onboarding`). Contrat : [`contract/app-contract.v1.json`](contract/app-contract.v1.json), rejoué par ce paquet, les autres SDK et le client Flutter.
+Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /payments/{id}`, `POST /payments/{id}/cancel` (le client change d'offre), `POST /webhook` (adresse à déclarer à Technas). Les essais expirés sont sautés tout seuls (`42-1`, `42-2`…) : rien à stocker. Carte : `card: true`, et `authorizeAdmin` pour l'écran du marchand (`GET /card/account`, `POST /card/onboarding`). Contrat : [`contract/app-contract.v1.json`](contract/app-contract.v1.json), rejoué par ce paquet, les autres SDK et le client Flutter.
 
 ## 5. Tout le reste
 
 | Méthode | Rôle |
 |---|---|
 | `getPayment($id)`, `getPaymentByReference($ref)` | Statut ; rattraper un avis manqué |
+| `cancelPayment($id)` | Annuler un paiement que personne n'a commencé à payer (le client change d'offre) |
 | `listTransactions(limit:, status:, cursor:)` | Historique paginé (`nextCursor`) |
 | `refund($paymentId, amount: ?, fees: 'partner'\|'customer', reference: ?)` | Rembourser au numéro ou à la carte qui a payé |
 | `recordExternalRefund($paymentId, $amount, $method)` | Noter un remboursement fait hors Technas |
@@ -147,7 +148,7 @@ Les chiffres viennent de l'API : ne les écrivez jamais en dur. L'avis `account.
 
 **Une référence = un essai.** `failed` n'est pas définitif : le client peut encore payer sur la même page pendant une heure. Ne relancez qu'après `payment.expired`, avec une nouvelle référence.
 
-**Le client change d'offre ou revient plus tard ?** Un essai non payé ne bloque jamais un nouvel essai : nouvelle offre, ou essai expiré, c'est un nouvel essai avec une nouvelle référence (`Status::retryReference($factureId, $n + 1)`, `$n` gardé en base). Réutiliser la référence d'un autre montant lève `reference_conflict`, celle d'un essai expiré `payment_expired` ; les routes toutes faites passent seules à l'essai suivant. Au retour du client, relisez le dernier essai avec `getPayment` avant de répondre. La facture n'est payée que sur l'avis `payment.completed`, jamais sur `returnUrl`. Si le client a payé deux pages, remboursez l'essai en trop avec `refund`.
+**Le client change d'offre ou revient plus tard ?** Un essai non payé ne bloque jamais un nouvel essai : nouvelle offre, ou essai expiré, c'est un nouvel essai avec une nouvelle référence (`Status::retryReference($factureId, $n + 1)`, `$n` gardé en base). Autre offre : ANNULEZ d'abord l'ancien essai (`cancelPayment`), puis créez le nouveau. Si l'annulation répond `payment_in_progress` (une demande est en cours chez l'opérateur), ne créez PAS de second paiement : attendez l'avis de l'issue ; `payment_already_completed` : le client a payé l'ancienne offre, relisez-la et ne créez rien. Un paiement annulé reste `expired` (`canceledAt`, `cancelReason`) ; son avis `payment.expired` porte `reason` = `canceled` (`timeout` pour une échéance passée). Réutiliser la référence d'un autre montant lève `reference_conflict`, celle d'un essai expiré `payment_expired` ; les routes toutes faites annulent l'ancien essai encore ouvert et passent seules à l'essai suivant. Au retour du client, relisez le dernier essai avec `getPayment` avant de répondre. La facture n'est payée que sur l'avis `payment.completed`, jamais sur `returnUrl`. Si le client a payé deux pages, remboursez l'essai en trop avec `refund`.
 
 ```php
 use TechnasPay\Status;
@@ -166,7 +167,12 @@ function payer(Facture $facture, int $montant): string
         if ($dernier->status !== 'expired' && $dernier->amount === $montant && $dernier->checkoutUrl !== null) {
             return $dernier->checkoutUrl; // même offre, essai en cours : la même page
         }
-        // pending ou failed d'une autre offre, ou expired : nouvel essai, jamais un refus.
+        if ($dernier->status !== 'expired') {
+            // Autre offre : l'ancien lien est fermé d'abord. payment_in_progress (demande en cours chez
+            // l'opérateur : attendre l'avis) ou payment_already_completed (payé : relire) remontent,
+            // et AUCUN second paiement n'est créé.
+            $pay->cancelPayment($dernier->id);
+        }
     }
     $facture->tentative += 1; // n + 1, gardé en base
     $payment = $pay->askForPayment([
