@@ -2,17 +2,17 @@
     "packages": [
         {
             "name": "technas/pay",
-            "version": "v0.4.0",
-            "version_normalized": "0.4.0.0",
+            "version": "v0.4.1",
+            "version_normalized": "0.4.1.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Technas-Organization/technas-pay-php.git",
-                "reference": "8032b727f0d415075f0265dcc5639ee9f690d3f5"
+                "reference": "2d4818b7b9f6e544153e8e600740add70bd37600"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/8032b727f0d415075f0265dcc5639ee9f690d3f5",
-                "reference": "8032b727f0d415075f0265dcc5639ee9f690d3f5",
+                "url": "https://api.github.com/repos/Technas-Organization/technas-pay-php/zipball/2d4818b7b9f6e544153e8e600740add70bd37600",
+                "reference": "2d4818b7b9f6e544153e8e600740add70bd37600",
                 "shasum": ""
             },
             "require": {
@@ -32,7 +32,7 @@
                 "psr/http-server-handler": "Pour TechnasPay\\Bridge\\Psr15Handler (Slim, Mezzio…)",
                 "symfony/http-foundation": "Pour les routes Laravel et Symfony (TechnasPay\\Bridge\\SymfonyBridge)"
             },
-            "time": "2026-11-16T11:56:06+00:00",
+            "time": "2026-11-16T12:10:05+00:00",
             "type": "library",
             "installation-source": "dist",
             "autoload": {
@@ -63,7 +63,7 @@
                 "xof"
             ],
             "support": {
-                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.4.0",
+                "source": "https://github.com/Technas-Organization/technas-pay-php/tree/v0.4.1",
                 "issues": "https://github.com/Technas-Organization/technas-pay-php/issues"
             },
             "install-path": "../technas/pay"

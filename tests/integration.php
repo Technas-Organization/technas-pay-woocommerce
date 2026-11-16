@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.4.0', '>='), 'M1 : le SDK embarqué est au moins 0.4.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.4.1', '>='), 'M1 : le SDK embarqué est au moins 0.4.1 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0, identifiants validés avant tout appel en 0.4.1)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();

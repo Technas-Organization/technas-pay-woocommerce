@@ -236,6 +236,9 @@ final class AppRoutes
                 if ($orderId === '') {
                     return self::err(400, 'invalid_request', 'orderId manquant');
                 }
+                if (!D::isId($orderId)) {
+                    return self::err(404, 'order_not_found', 'Commande introuvable');
+                }
                 $order = $this->resolve($orderId, $user);
                 if ($order === null) {
                     return self::err(404, 'order_not_found', 'Commande introuvable');
@@ -256,6 +259,9 @@ final class AppRoutes
                 if ($orderId === '') {
                     return self::err(400, 'invalid_request', 'orderId manquant');
                 }
+                if (!D::isId($orderId)) {
+                    return self::err(404, 'order_not_found', 'Commande introuvable');
+                }
                 $payMethod = $b['method'] ?? 'mobile_money';
                 if ($payMethod !== 'mobile_money' && $payMethod !== 'card') {
                     return self::err(400, 'invalid_request', 'method vaut "mobile_money" ou "card"');
@@ -274,7 +280,10 @@ final class AppRoutes
             }
 
             // GET /payments/{id} et POST /payments/{id}/cancel : seulement si la commande de ce paiement
-            // est à cet utilisateur.
+            // est à cet utilisateur. Un identifiant hors du motif n'est jamais transmis.
+            if (!D::isId($isCancel ? $cancelId : $paymentId)) {
+                return self::err(404, 'payment_not_found', 'Paiement introuvable');
+            }
             try {
                 $payment = $this->pay->getPayment($isCancel ? $cancelId : $paymentId);
             } catch (TechnasPayException $e) {

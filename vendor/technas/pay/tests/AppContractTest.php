@@ -107,6 +107,31 @@ final class AppContractTest extends TestCase
         self::assertSame('https://gw.test/v1/payments?reference=42-1', $gw->calls[1]['url']);
     }
 
+    public function testIdentifiantsHorsDuMotifRendent404SansAppel(): void
+    {
+        $resolved = [];
+        $gw = new FakeTransport();
+        $routes = (new TechnasPay(self::SECRET, 'https://gw.test', $gw))->appRoutes(
+            authorize: fn () => 'u1',
+            resolveOrder: function (string $id) use (&$resolved) {
+                $resolved[] = $id;
+                return ['amount' => 5000, 'customer' => ['email' => 'awa@exemple.tg', 'name' => 'Awa Mensah']];
+            },
+            returnUrl: 'https://app.test/retour',
+        );
+        $code = fn ($r) => [$r->status, json_decode($r->json(), true)['code']];
+        foreach (['..%2Fbalance', '..', '.', 'a%2Fb', 'a%252Fb', 'pay%201', '%0A', str_repeat('a', 129)] as $id) {
+            self::assertSame([404, 'payment_not_found'], $code($routes->handle(new AppRequest('GET', "/payments/$id"))), $id);
+            self::assertSame([404, 'payment_not_found'], $code($routes->handle(new AppRequest('POST', "/payments/$id/cancel"))), $id);
+        }
+        foreach (['../balance', '..', 'a/b', 'a%2Fb', 'commande 42', "42\n", str_repeat('4', 129)] as $orderId) {
+            self::assertSame([404, 'order_not_found'], $code($routes->handle(new AppRequest('GET', '/methods', ['orderId' => $orderId]))), $orderId);
+            self::assertSame([404, 'order_not_found'], $code($routes->handle(new AppRequest('POST', '/payments', [], [], (string) json_encode(['orderId' => $orderId])))), $orderId);
+        }
+        self::assertSame([], $gw->calls, 'aucun appel à la passerelle');
+        self::assertSame([], $resolved, 'la commande n\'est pas lue');
+    }
+
     public function testWebhookSigneRefuseEtNonBranche(): void
     {
         $paid = [];

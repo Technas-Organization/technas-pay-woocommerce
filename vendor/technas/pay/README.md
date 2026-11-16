@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.4
+composer require technas/pay:^0.4.1
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :

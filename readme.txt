@@ -4,7 +4,7 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.4.0
+Stable tag: 0.4.1
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -30,6 +30,10 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.4.1 =
+* Security: payment and refund identifiers are checked before any call to Technas Pay. A malformed identifier is refused without sending your key anywhere.
+* Technas Pay PHP SDK 0.4.1.
 
 = 0.4.0 =
 * Only one payment open per order: when the customer switches between mobile money and card, or when the order total changed, the previous payment link is canceled before a new one is created. This prevents an order from being paid twice (mobile money, then card).

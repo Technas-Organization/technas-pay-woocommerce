@@ -27,7 +27,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.4.0';
+    public const VERSION = '0.4.1';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -149,13 +149,17 @@ final class TechnasPay
         }
     }
 
-    /** Un identifiant ne sort jamais de son segment d'adresse : encodé, et jamais vide. */
+    /**
+     * Un identifiant dans un chemin : `[A-Za-z0-9_-]{1,128}`, sinon `invalid_request` AVANT tout appel.
+     * Jamais « . », « .. », « / » ni rien d'encodé : un proxy qui décode puis normalise le chemin
+     * pourrait l'envoyer vers une autre route, avec votre clé. Le message ne cite pas la valeur reçue.
+     */
     private static function seg(string $id): string
     {
-        if (trim($id) === '') {
-            throw new TechnasPayException('invalid_request', 'Identifiant manquant');
+        if (!D::isId($id)) {
+            throw new TechnasPayException('invalid_request', 'Identifiant invalide');
         }
-        return rawurlencode($id);
+        return $id;
     }
 
     // --- Paiements -----------------------------------------------------------------------------

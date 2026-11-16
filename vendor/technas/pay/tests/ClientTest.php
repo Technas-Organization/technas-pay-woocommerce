@@ -130,21 +130,54 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testIdentifiantEchappeEtSimulation(): void
+    /** @var list<string> */
+    private const INVALID_IDS = ['../balance', '..', '.', 'a/b', 'a%2Fb', '', 'pay 1', "pay_1\n", 'é'];
+
+    public function testIdentifiantInvalideRefuseSansAppel(): void
     {
+        $t = new FakeTransport();
+        $pay = $this->pay($t);
+        $calls = [
+            'getPayment' => fn (string $id) => $pay->getPayment($id),
+            'cancelPayment' => fn (string $id) => $pay->cancelPayment($id),
+            'getRefund' => fn (string $id) => $pay->getRefund($id),
+            'refund' => fn (string $id) => $pay->refund($id),
+            'recordExternalRefund' => fn (string $id) => $pay->recordExternalRefund($id, 2000, 'Espèces'),
+            'simulateTestPayment' => fn (string $id) => $pay->simulateTestPayment($id, 'completed'),
+        ];
+        foreach ($calls as $name => $call) {
+            foreach ([...self::INVALID_IDS, str_repeat('a', 129)] as $id) {
+                try {
+                    $call($id);
+                    self::fail("$name a accepté " . var_export($id, true));
+                } catch (TechnasPayException $e) {
+                    self::assertSame(['invalid_request', 0, false], [$e->errorCode, $e->status, $e->retryable()], $name);
+                    if ($id !== '' && $id !== '.') {
+                        self::assertStringNotContainsString($id, $e->getMessage(), "$name : le message ne cite pas l'identifiant");
+                    }
+                }
+            }
+        }
+        self::assertSame([], $t->calls, 'aucun appel');
+    }
+
+    public function testIdentifiantValidePartTelQuelEtSimulation(): void
+    {
+        $uuid = '3f2b8c1e-9a4d-4e6b-8f0a-2c7d5e1b9a3f';
         $t = new FakeTransport([
-            ['status' => 404, 'body' => ['code' => 'payment_not_found', 'message' => 'm']],
+            ['status' => 200, 'body' => ['id' => $uuid] + self::PAYMENT],
+            ['status' => 200, 'body' => self::PAYMENT],
             ['status' => 303, 'body' => []],
             ['status' => 200, 'body' => ['status' => 'completed'] + self::PAYMENT],
         ]);
         $pay = $this->pay($t);
-        try {
-            $pay->getPayment('../balance');
-        } catch (TechnasPayException) {
-        }
-        self::assertSame('https://gw.test/v1/payments/..%2Fbalance', $t->calls[0]['url']);
+        $pay->getPayment($uuid);
+        self::assertSame('https://gw.test/v1/payments/' . $uuid, $t->calls[0]['url']);
+        $pay->getPayment(str_repeat('a', 128));
+        self::assertSame('https://gw.test/v1/payments/' . str_repeat('a', 128), $t->calls[1]['url']);
         self::assertSame('completed', $pay->simulateTestPayment('pay_1', 'completed')->status);
-        self::assertFalse($t->calls[1]['follow'], 'le 303 vers returnUrl n\'est pas suivi');
+        self::assertSame('https://gw.test/test-checkout/pay_1/completed', $t->calls[2]['url']);
+        self::assertFalse($t->calls[2]['follow'], 'le 303 vers returnUrl n\'est pas suivi');
         $this->expectExceptionMessage('tps_test_');
         $this->pay(new FakeTransport(), str_replace('tps_test_', 'tps_live_', self::SECRET))->simulateTestPayment('p', 'completed');
     }
@@ -197,7 +230,6 @@ final class ClientTest extends TestCase
             ['status' => 200, 'body' => $annule],
             ['status' => 409, 'body' => ['code' => 'payment_in_progress', 'message' => 'm']],
             ['status' => 409, 'body' => ['code' => 'payment_already_completed', 'message' => 'm']],
-            ['status' => 404, 'body' => ['code' => 'payment_not_found', 'message' => 'm']],
         ]);
         $pay = $this->pay($t);
         $p = $pay->cancelPayment('pay_1');
@@ -214,22 +246,16 @@ final class ClientTest extends TestCase
                 self::assertSame([$code, 409, $retryable], [$e->errorCode, $e->status, $e->retryable()]);
             }
         }
-        // Même encodage que getPayment : l'identifiant reste dans son segment.
-        try {
-            $pay->cancelPayment('../balance');
-        } catch (TechnasPayException) {
-        }
-        self::assertSame('https://gw.test/v1/payments/..%2Fbalance/cancel', $t->calls[4]['url']);
-        self::assertCount(5, $t->calls);
-        foreach (['', '  '] as $vide) {
+        // Même règle que getPayment : un identifiant hors du motif ne part pas.
+        foreach (['../balance', '', '  '] as $invalide) {
             try {
-                $pay->cancelPayment($vide);
-                self::fail('identifiant vide accepté');
+                $pay->cancelPayment($invalide);
+                self::fail('identifiant invalide accepté');
             } catch (TechnasPayException $e) {
                 self::assertSame(['invalid_request', 0], [$e->errorCode, $e->status]);
             }
         }
-        self::assertCount(5, $t->calls, 'identifiant vide : aucun appel');
+        self::assertCount(4, $t->calls, 'identifiant invalide : aucun appel');
         // Un paiement lu sans annulation n'a ni canceledAt ni cancelReason.
         $lu = \TechnasPay\Model\Payment::fromApi(self::PAYMENT);
         self::assertSame([null, null, null], [$lu->canceledAt, $lu->cancelReason, $lu->reason]);

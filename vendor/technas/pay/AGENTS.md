@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.4
+composer require technas/pay:^0.4.1
 ```
 
 ## Quelle méthode pour quoi
@@ -50,7 +50,7 @@ composer require technas/pay:^0.4
 
 ## App mobile (Flutter)
 
-Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: …, returnUrl: …, webhooks: …, card: ?, authorizeAdmin: ?)`, montées sous `/api/technas-pay` par `SymfonyBridge::handle($routes, $request, $path)` (Laravel, Symfony) ou `new Psr15Handler($routes, $psr17, $psr17)`. `resolveOrder($orderId, $user)` relit la commande EN BASE et rend `null` si elle n'est pas à cet utilisateur. N'y mettez jamais un montant reçu de l'app. Le client change d'offre : l'app appelle `POST /payments/{id}/cancel` sur l'essai affiché, puis `POST /payments` ; si la commande a changé de montant, `POST /payments` annule lui-même l'ancien essai encore ouvert. Côté app : `TechnasPayClient(baseUrl: '…/api/technas-pay')`.
+Ne réécrivez pas de routes : `$pay->appRoutes(authorize: …, resolveOrder: …, returnUrl: …, webhooks: …, card: ?, authorizeAdmin: ?)`, montées sous `/api/technas-pay` par `SymfonyBridge::handle($routes, $request, $path)` (Laravel, Symfony) ou `new Psr15Handler($routes, $psr17, $psr17)`. `resolveOrder($orderId, $user)` relit la commande EN BASE et rend `null` si elle n'est pas à cet utilisateur. Un `orderId` hors de `[A-Za-z0-9_-]{1,128}` rend 404 sans l'appeler. N'y mettez jamais un montant reçu de l'app. Le client change d'offre : l'app appelle `POST /payments/{id}/cancel` sur l'essai affiché, puis `POST /payments` ; si la commande a changé de montant, `POST /payments` annule lui-même l'ancien essai encore ouvert. Côté app : `TechnasPayClient(baseUrl: '…/api/technas-pay')`.
 
 ## Obligatoire
 
