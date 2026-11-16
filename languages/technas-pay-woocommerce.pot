@@ -103,6 +103,15 @@ msgstr ""
 msgid "The amount is too low for this payment method."
 msgstr ""
 
+msgid "A payment is already in progress for this order. Complete it, or try again in a few minutes."
+msgstr ""
+
+msgid "This order is already paid."
+msgstr ""
+
+msgid "Technas Pay: the previous payment link was canceled (the customer changed the payment method or the order total changed). Nothing was paid on it."
+msgstr ""
+
 msgid "The payment service is temporarily unavailable. Please try again in a moment."
 msgstr ""
 

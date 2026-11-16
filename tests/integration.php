@@ -37,7 +37,7 @@ final class TP_Fake_Transport implements Transport
 
     public function send(string $method, string $url, array $headers, ?string $body, bool $followRedirects = true): array
     {
-        $this->calls[] = ['method' => $method, 'path' => parse_url($url, PHP_URL_PATH), 'body' => $body ? json_decode($body, true) : null, 'auth' => $headers['Authorization'] ?? null];
+        $this->calls[] = ['method' => $method, 'path' => parse_url($url, PHP_URL_PATH), 'query' => (string) parse_url($url, PHP_URL_QUERY), 'body' => $body ? json_decode($body, true) : null, 'auth' => $headers['Authorization'] ?? null];
         if (!$this->queue) {
             throw new \LogicException("appel imprévu : $method $url");
         }
@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.3.0', '>='), 'M1 : le SDK embarqué est au moins 0.3.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.4.0', '>='), 'M1 : le SDK embarqué est au moins 0.4.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -232,7 +232,10 @@ $id3c = $o3c->get_id();
 $o3c = wc_get_order($id3c);
 $o3c->set_total(7500);
 $o3c->save();
+// Service sans annulation (404) : l'ancienne page reste ouverte, le client peut payer les deux.
 $fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_3c1', 'reference' => $r3c1])];
+$fake->queue[] = [404, ['code' => 'not_found', 'message' => 'Not Found']];
 $fake->queue[] = [201, tp_payment(['id' => 'pay_3c2', 'reference' => "wc-$id3c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_3c2'])];
 $mm->process_payment($id3c);
 [$b3c1, $s3c1] = tp_completed(wc_get_order($id3c), 'pay_3c1', $r3c1, ['amount' => 5000]);
@@ -271,16 +274,116 @@ $o4c = wc_get_order($id4c);
 $o4c->set_total(7500);
 $o4c->save();
 $fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_4c1', 'reference' => "wc-$id4c-1"])];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_4c1', 'reference' => "wc-$id4c-1", 'status' => 'expired', 'checkout_url' => null, 'canceled_at' => '2026-11-16T09:00:00Z', 'cancel_reason' => 'canceled_by_partner'])];
 $fake->queue[] = [201, tp_payment(['id' => 'pay_4c2', 'reference' => "wc-$id4c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_4c2'])];
 $r4c = $mm->process_payment($id4c);
-$sent4c = array_map(fn ($c) => [$c['body']['reference'] ?? null, $c['body']['amount'] ?? null], array_slice($fake->calls, -2));
+$sent4c = array_map(fn ($c) => [$c['body']['reference'] ?? null, $c['body']['amount'] ?? null], array_values(array_filter(array_slice($fake->calls, -4), fn ($c) => $c['method'] === 'POST' && $c['path'] === '/v1/payments')));
 tp_check($sent4c === [["wc-$id4c-1", 7500], ["wc-$id4c-2", 7500]], 'total changé : reference_conflict sur wc-{commande}-1, nouvel essai wc-{commande}-2 au nouveau montant', $sent4c);
+$mid4c = array_map(fn ($c) => [$c['method'], $c['path'], $c['query']], array_slice($fake->calls, -3, 2));
+tp_check($mid4c === [['GET', '/v1/payments', "reference=wc-$id4c-1"], ['POST', '/v1/payments/pay_4c1/cancel', '']], 'total changé : l\'ancien essai est relu par sa référence et annulé avant le suivant', $mid4c);
 tp_check($r4c['result'] === 'success' && $r4c['redirect'] === 'https://pay-api.technas.fr/checkout/pay_4c2', 'total changé : le client part sur la page du nouvel essai, jamais un refus', $r4c);
 tp_check((int) wc_get_order($id4c)->get_meta('_technas_pay_attempt') === 2 && wc_get_order($id4c)->get_meta('_technas_pay_payment_id') === 'pay_4c2', 'total changé : le nouvel essai est gardé sur la commande');
 // Le client revient sur « Payer » sans rien changer : l'essai en cours est rendu (même référence).
 $fake->queue[] = [200, tp_payment(['id' => 'pay_4c2', 'reference' => "wc-$id4c-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_4c2'])];
 $r4d = $mm->process_payment($id4c);
 tp_check(end($fake->calls)['body']['reference'] === "wc-$id4c-2" && $r4d['redirect'] === 'https://pay-api.technas.fr/checkout/pay_4c2', 'retour sur « Payer » : l\'essai en cours est rendu, même page', $r4d);
+
+// 7 ter. Un seul paiement ouvert par commande : changement de total ou de moyen de paiement.
+$tp_calls_since = fn (int $from) => array_map(fn ($c) => $c['method'] . ' ' . $c['path'], array_slice($fake->calls, $from));
+// Total changé alors que l'ancien essai vient d'être payé : aucun nouveau paiement, message clair.
+$o7a = tp_order();
+$id7a = $o7a->get_id();
+tp_start($fake, $mm, $o7a, 'pay_7a1');
+$o7a = wc_get_order($id7a);
+$o7a->set_total(7500);
+$o7a->save();
+$fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7a1', 'reference' => "wc-$id7a-1", 'status' => 'completed'])];
+$from = count($fake->calls);
+$r7a = $mm->process_payment($id7a);
+tp_check($r7a['result'] === 'failure' && $tp_calls_since($from) === ['POST /v1/payments', 'GET /v1/payments'], 'total changé, ancien essai payé : ni annulation ni nouveau paiement', $tp_calls_since($from));
+tp_check(wc_get_order($id7a)->get_meta('_technas_pay_payment_id') === 'pay_7a1', 'total changé, ancien essai payé : la commande garde son essai');
+// Total changé, l'annulation répond 404 (service qui ne l'a pas encore) : on continue comme avant.
+$o7b = tp_order();
+$id7b = $o7b->get_id();
+tp_start($fake, $mm, $o7b, 'pay_7b1');
+$o7b = wc_get_order($id7b);
+$o7b->set_total(7500);
+$o7b->save();
+$fake->queue[] = [409, ['code' => 'reference_conflict', 'message' => 'm']];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7b1', 'reference' => "wc-$id7b-1"])];
+$fake->queue[] = [404, ['code' => 'not_found', 'message' => 'Not Found']];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_7b2', 'reference' => "wc-$id7b-2", 'amount' => 7500, 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_7b2'])];
+$r7b = $mm->process_payment($id7b);
+tp_check($r7b['result'] === 'success' && $r7b['redirect'] === 'https://pay-api.technas.fr/checkout/pay_7b2', 'total changé, annulation absente (404) : nouvel essai au nouveau montant, le client n\'est pas bloqué', $r7b);
+
+// Mobile money ouvert, puis le client choisit la carte : le lien mobile money est annulé d'abord.
+$o7c = tp_order();
+$id7c = $o7c->get_id();
+tp_start($fake, $mm, $o7c, 'pay_7c1');
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7c1', 'reference' => "wc-$id7c-1", 'status' => 'failed'])];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7c1', 'reference' => "wc-$id7c-1", 'status' => 'expired', 'checkout_url' => null, 'canceled_at' => '2026-11-16T09:00:00Z', 'cancel_reason' => 'canceled_by_partner'])];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_7c2', 'reference' => "wc-$id7c-card-2", 'method' => 'card', 'currency' => 'XOF', 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_7c2'])];
+$from = count($fake->calls);
+$r7c = $card->process_payment($id7c);
+tp_check($tp_calls_since($from) === ['GET /v1/payments/pay_7c1', 'POST /v1/payments/pay_7c1/cancel', 'POST /v1/payments'] && $r7c['redirect'] === 'https://pay-api.technas.fr/checkout/pay_7c2', 'changement de moyen : le dernier essai mobile money encore ouvert est annulé avant la carte', $tp_calls_since($from));
+// Puis retour au mobile money : c'est le dernier essai CARTE qui est fermé.
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7c2', 'reference' => "wc-$id7c-card-2", 'method' => 'card'])];
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7c2', 'reference' => "wc-$id7c-card-2", 'method' => 'card', 'status' => 'expired', 'checkout_url' => null])];
+// wc-{commande}-1 a été annulé : Technas répond payment_expired, l'essai suivant est créé.
+$fake->queue[] = [409, ['code' => 'payment_expired', 'message' => 'm']];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_7c3', 'reference' => "wc-$id7c-2", 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_7c3'])];
+$from = count($fake->calls);
+$r7c3 = $mm->process_payment($id7c);
+tp_check($tp_calls_since($from) === ['GET /v1/payments/pay_7c2', 'POST /v1/payments/pay_7c2/cancel', 'POST /v1/payments', 'POST /v1/payments'] && $r7c3['redirect'] === 'https://pay-api.technas.fr/checkout/pay_7c3', 'retour au mobile money : le dernier essai carte est annulé, nouvel essai wc-{commande}-2', $tp_calls_since($from));
+// L'avis du lien annulé : la note dit « annulé », pas « expiré ».
+[$b7c, $s7c] = tp_signed_event('payment.expired', tp_payment(['id' => 'pay_7c1', 'reference' => "wc-$id7c-1", 'status' => 'expired', 'checkout_url' => null, 'metadata' => tp_meta(wc_get_order($id7c)), 'reason' => 'canceled', 'canceled_at' => '2026-11-16T09:00:00Z']));
+$tp_notes = fn (int $id, string $needle) => count(array_filter(wc_get_order_notes(['order_id' => $id]), fn ($n) => str_contains($n->content, $needle)));
+tp_check(Technas_Pay_Webhook::handle($b7c, $s7c)[0] === 200, 'avis payment.expired (reason canceled) accepté');
+tp_check($tp_notes($id7c, 'previous payment link was canceled') === 1 && $tp_notes($id7c, 'link expired') === 0, 'avis d\'un lien annulé : la note dit que le lien a été annulé (changement de moyen ou de total), pas expiré');
+[$b7t, $s7t] = tp_signed_event('payment.expired', tp_payment(['id' => 'pay_7c2', 'reference' => "wc-$id7c-card-2", 'method' => 'card', 'status' => 'expired', 'checkout_url' => null, 'metadata' => tp_meta(wc_get_order($id7c)), 'reason' => 'timeout']));
+Technas_Pay_Webhook::handle($b7t, $s7t);
+tp_check($tp_notes($id7c, 'link expired') === 1 && $tp_notes($id7c, 'previous payment link was canceled') === 1, 'avis d\'un lien échu (reason timeout) : la note dit « expiré »');
+
+// Changement de moyen pendant une demande en cours chez l'opérateur, ou sur un essai déjà payé :
+// aucun nouveau paiement, message neutre au client.
+foreach ([['payment_in_progress', 'A payment is already in progress for this order. Complete it, or try again in a few minutes.'], ['payment_already_completed', 'This order is already paid.']] as [$code, $msg]) {
+    $o7d = tp_order();
+    $id7d = $o7d->get_id();
+    tp_start($fake, $mm, $o7d, "pay_7d_$code");
+    $fake->queue[] = [200, tp_payment(['id' => "pay_7d_$code", 'reference' => "wc-$id7d-1"])];
+    $fake->queue[] = [409, ['code' => $code, 'message' => 'm']];
+    $from = count($fake->calls);
+    try {
+        Technas_Pay_WC::start_payment(wc_get_order($id7d), 'card', 'https://exemple.test/merci');
+        tp_check(false, "changement de moyen, $code : un nouveau paiement a été créé");
+    } catch (TechnasPay\TechnasPayException $e) {
+        tp_check($e->errorCode === $code && Technas_Pay_WC::customer_message($e) === $msg, "changement de moyen, $code : message au client « $msg »", [$e->errorCode, Technas_Pay_WC::customer_message($e)]);
+    }
+    tp_check($tp_calls_since($from) === ["GET /v1/payments/pay_7d_$code", "POST /v1/payments/pay_7d_$code/cancel"], "changement de moyen, $code : aucun nouveau paiement", $tp_calls_since($from));
+    $fake->queue[] = [200, tp_payment(['id' => "pay_7d_$code", 'reference' => "wc-$id7d-1"])];
+    $fake->queue[] = [409, ['code' => $code, 'message' => 'm']];
+    tp_check($card->process_payment($id7d)['result'] === 'failure' && wc_get_order($id7d)->get_meta('_technas_pay_payment_id') === "pay_7d_$code", "changement de moyen, $code : process_payment échoue, la commande garde son essai");
+}
+// Changement de moyen, l'annulation répond 404 : on continue comme avant.
+$o7e = tp_order();
+$id7e = $o7e->get_id();
+tp_start($fake, $mm, $o7e, 'pay_7e1');
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7e1', 'reference' => "wc-$id7e-1"])];
+$fake->queue[] = [404, ['code' => 'not_found', 'message' => 'Not Found']];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_7e2', 'reference' => "wc-$id7e-card-1", 'method' => 'card', 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_7e2'])];
+$r7e = $card->process_payment($id7e);
+tp_check($r7e['result'] === 'success' && $r7e['redirect'] === 'https://pay-api.technas.fr/checkout/pay_7e2', 'changement de moyen, annulation absente (404) : la carte s\'ouvre, le client n\'est pas bloqué', $r7e);
+// Un essai de l'autre moyen déjà expiré n'est pas annulé.
+$o7f = tp_order();
+$id7f = $o7f->get_id();
+tp_start($fake, $mm, $o7f, 'pay_7f1');
+$fake->queue[] = [200, tp_payment(['id' => 'pay_7f1', 'reference' => "wc-$id7f-1", 'status' => 'expired', 'checkout_url' => null])];
+$fake->queue[] = [201, tp_payment(['id' => 'pay_7f2', 'reference' => "wc-$id7f-card-1", 'method' => 'card', 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_7f2'])];
+$from = count($fake->calls);
+$card->process_payment($id7f);
+tp_check($tp_calls_since($from) === ['GET /v1/payments/pay_7f1', 'POST /v1/payments'], 'changement de moyen, ancien essai expiré : rien à annuler', $tp_calls_since($from));
 
 // 8. F3 : une adresse de paiement inattendue n'est jamais suivie.
 $o5 = tp_order();

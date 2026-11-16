@@ -222,7 +222,13 @@ final class Technas_Pay_Webhook {
 			$order->update_meta_data( Technas_Pay_WC::META_ATTEMPT, max( (int) $order->get_meta( Technas_Pay_WC::META_ATTEMPT ), (int) $m[1] + 1 ) );
 			$order->save();
 		}
-		$order->add_order_note( __( 'Technas Pay: the payment link expired, nothing was paid. The customer can pay again from the order page.', 'technas-pay-woocommerce' ) );
+		// Lien annulé par l'extension (le client a changé de moyen de paiement ou le total a changé) :
+		// ce n'est pas une échéance passée, la note le dit.
+		$order->add_order_note(
+			$e->payment->reason === 'canceled'
+				? __( 'Technas Pay: the previous payment link was canceled (the customer changed the payment method or the order total changed). Nothing was paid on it.', 'technas-pay-woocommerce' )
+				: __( 'Technas Pay: the payment link expired, nothing was paid. The customer can pay again from the order page.', 'technas-pay-woocommerce' )
+		);
 	}
 
 	private static function on_refund( Event $e ): void {

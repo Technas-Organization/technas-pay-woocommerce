@@ -27,7 +27,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.3.0';
+    public const VERSION = '0.4.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -118,7 +118,11 @@ final class TechnasPay
         if ($body !== null) {
             $headers['Content-Type'] = 'application/json';
         }
-        $r = $this->transport->send($method, $this->baseUrl . $path, $headers, $body === null ? null : json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
+        $r = $this->transport->send($method, $this->baseUrl . $path, $headers, match (true) {
+            $body === null => null,
+            $body === [] => '{}', // un objet JSON vide, jamais []
+            default => json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION),
+        });
         $data = null;
         if ($r['body'] !== '') {
             try {
@@ -145,8 +149,12 @@ final class TechnasPay
         }
     }
 
+    /** Un identifiant ne sort jamais de son segment d'adresse : encodé, et jamais vide. */
     private static function seg(string $id): string
     {
+        if (trim($id) === '') {
+            throw new TechnasPayException('invalid_request', 'Identifiant manquant');
+        }
         return rawurlencode($id);
     }
 
@@ -206,6 +214,19 @@ final class TechnasPay
     public function getPayment(string $id): Payment
     {
         return Payment::fromApi($this->callMap('GET', '/v1/payments/' . self::seg($id)));
+    }
+
+    /**
+     * Annule DÉFINITIVEMENT un paiement que personne n'a commencé à payer (le client change d'offre ou
+     * de moyen) : rien ne peut plus aboutir dessus. Rend le paiement, `expired`, sans lien
+     * (`canceledAt`, `cancelReason`). Rejouer rend le même résultat. Refus : `payment_already_completed`
+     * (payé : relisez-le, ne créez rien), `payment_in_progress` (une demande est en cours chez
+     * l'opérateur : ne créez PAS de second paiement, attendez l'avis). Puis créez le nouvel essai avec
+     * une NOUVELLE référence.
+     */
+    public function cancelPayment(string $id): Payment
+    {
+        return Payment::fromApi($this->callMap('POST', '/v1/payments/' . self::seg($id) . '/cancel', []));
     }
 
     /** Pour rattraper un webhook manqué. */

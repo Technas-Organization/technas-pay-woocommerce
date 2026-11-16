@@ -42,6 +42,12 @@ final class Payment
         public readonly ?string $completedAt,
         public readonly ?string $expiresAt,
         public readonly ?string $expiredAt,
+        /** Quand vous l'avez annulé (`cancelPayment`) ; `null` sinon. Un paiement annulé reste `expired`. */
+        public readonly ?string $canceledAt = null,
+        /** `canceled_by_partner` après `cancelPayment` ; `null` sinon. */
+        public readonly ?string $cancelReason = null,
+        /** Avis `payment.expired` : `canceled` (annulé par vous) ou `timeout` ; `null` sur un ancien avis. */
+        public readonly ?string $reason = null,
     ) {
     }
 
@@ -68,6 +74,9 @@ final class Payment
             D::nstr($r, 'completed_at'),
             D::nstr($r, 'expires_at'),
             D::nstr($r, 'expired_at'),
+            D::nstr($r, 'canceled_at'),
+            D::nstr($r, 'cancel_reason'),
+            D::nstr($r, 'reason'),
         );
     }
 

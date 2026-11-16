@@ -1,7 +1,7 @@
 {
   "name": "technas-pay-app",
   "version": 1,
-  "doc": "Contrat entre une app (technas_pay_flutter, TechnasPayClient) et les routes toutes faites des SDK serveur Technas Pay. Les chemins sont relatifs au préfixe de montage (ex. /api/technas-pay). Fichier copié À L'IDENTIQUE dans technas-pay-node, technas-pay-python et technas-pay-dart : chaque dépôt rejoue tous les cas. 'message' est un texte libre, jamais comparé. 'user' : l'utilisateur rendu par authorize (null = non authentifié). 'orders' : ce que resolveOrder rend pour (orderId, user) ; absent = commande inconnue ou d'un autre. 'gateway' : réponses successives de pay-api.technas.fr. Le webhook (POST /webhook, signé) est testé à part : sa signature dépend de l'heure. 'options' : options des routes pour ce cas ({card: true} ouvre la carte). 'admin' : présent = authorizeAdmin est branché et rend cette valeur (null = pas le marchand, 403). Une référence de paiement par carte est orderId-card-N, mobile money orderId-N. Un essai expiré (payment_expired) ou dont le montant ne correspond plus (reference_conflict : le client a changé d'offre) est sauté : essai suivant. Le paiement rendu à l'app porte 'method'.",
+  "doc": "Contrat entre une app (technas_pay_flutter, TechnasPayClient) et les routes toutes faites des SDK serveur Technas Pay. Les chemins sont relatifs au préfixe de montage (ex. /api/technas-pay). Fichier copié À L'IDENTIQUE dans technas-pay-node, technas-pay-python et technas-pay-dart : chaque dépôt rejoue tous les cas. 'message' est un texte libre, jamais comparé. 'user' : l'utilisateur rendu par authorize (null = non authentifié). 'orders' : ce que resolveOrder rend pour (orderId, user) ; absent = commande inconnue ou d'un autre. 'gateway' : réponses successives de pay-api.technas.fr. Le webhook (POST /webhook, signé) est testé à part : sa signature dépend de l'heure. 'options' : options des routes pour ce cas ({card: true} ouvre la carte). 'admin' : présent = authorizeAdmin est branché et rend cette valeur (null = pas le marchand, 403). Une référence de paiement par carte est orderId-card-N, mobile money orderId-N. Un essai expiré (payment_expired) est sauté. Un essai dont le montant ne correspond plus (reference_conflict : le client a changé d'offre) est relu par sa référence (GET /v1/payments?reference=), annulé s'il est encore ouvert (POST /v1/payments/{id}/cancel), puis l'essai suivant est créé ; si l'annulation répond payment_in_progress ou payment_already_completed, aucun second paiement n'est créé et l'erreur est rendue à l'app ; si elle répond 404 (paiement introuvable, ou route d'annulation absente d'un serveur plus ancien), l'essai suivant est créé comme avant. 'query_includes' : paramètres attendus dans l'adresse. Le paiement rendu à l'app porte 'method'.",
   "routes": [
     {
       "method": "GET",
@@ -24,6 +24,12 @@
     },
     {
       "method": "POST",
+      "path": "/payments/{id}/cancel",
+      "auth": true,
+      "response": "{payment: toAppJson} (status expired, checkout_url null)"
+    },
+    {
+      "method": "POST",
       "path": "/webhook",
       "auth": false,
       "signature": "X-Technas-Payment-Signature",
@@ -43,7 +49,7 @@
       "response": "{url, kind, expires_at, account}"
     }
   ],
-  "errors": "{code, message, retryable} ; 400 invalid_request, 401 unauthorized, 404 order_not_found | payment_not_found | not_found, 409/4xx code de Technas transmis, 502 Technas injoignable ou en panne (retryable true) ; 400 method_not_available (carte non ouverte par le marchand), 403 forbidden (routes du marchand)",
+  "errors": "{code, message, retryable} ; 400 invalid_request, 401 unauthorized, 404 order_not_found | payment_not_found | not_found, 409/4xx code de Technas transmis, 502 Technas injoignable ou en panne (retryable true) ; 400 method_not_available (carte non ouverte par le marchand), 403 forbidden (routes du marchand) ; 409 payment_in_progress (retryable true) et payment_already_completed (changement d'offre ou annulation)",
   "cases": [
     {
       "name": "démarrer : premier essai",
@@ -201,7 +207,7 @@
       }
     },
     {
-      "name": "démarrer : le client a changé d'offre (autre montant) → essai suivant, jamais un refus",
+      "name": "démarrer : le client a changé d'offre (autre montant) → l'ancien essai est annulé, puis le suivant est créé",
       "request": {
         "method": "POST",
         "path": "/payments",
@@ -225,6 +231,42 @@
           "body": {
             "code": "reference_conflict",
             "message": "m"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "expired",
+            "checkout_url": null,
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z",
+            "canceled_at": "2026-11-16T09:00:00Z",
+            "cancel_reason": "canceled_by_partner"
           }
         },
         {
@@ -255,6 +297,17 @@
           }
         },
         {
+          "method": "GET",
+          "path": "/v1/payments",
+          "query_includes": {
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments/pay_1/cancel"
+        },
+        {
           "method": "POST",
           "path": "/v1/payments",
           "body_includes": {
@@ -276,6 +329,385 @@
             "expires_at": "2026-11-15T11:00:00Z",
             "method": "mobile_money"
           }
+        }
+      }
+    },
+    {
+      "name": "démarrer : changement d'offre, l'annulation n'existe pas encore sur ce serveur (404) → essai suivant, comme avant",
+      "request": {
+        "method": "POST",
+        "path": "/payments",
+        "body": {
+          "orderId": "42"
+        }
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 7500,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 409,
+          "body": {
+            "code": "reference_conflict",
+            "message": "m"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 404,
+          "body": {
+            "code": "not_found",
+            "message": "Not Found"
+          }
+        },
+        {
+          "status": 201,
+          "body": {
+            "id": "pay_2",
+            "reference": "42-2",
+            "amount": 7500,
+            "currency": null,
+            "commission": 150,
+            "net_amount": 7350,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_2",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/payments",
+          "query_includes": {
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments/pay_1/cancel"
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-2"
+          }
+        }
+      ],
+      "expect": {
+        "status": 200,
+        "body": {
+          "payment": {
+            "id": "pay_2",
+            "reference": "42-2",
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_2",
+            "amount": 7500,
+            "currency": null,
+            "expires_at": "2026-11-15T11:00:00Z",
+            "method": "mobile_money"
+          }
+        }
+      }
+    },
+    {
+      "name": "démarrer : changement d'offre, l'ancien essai avait déjà expiré → pas d'annulation, essai suivant",
+      "request": {
+        "method": "POST",
+        "path": "/payments",
+        "body": {
+          "orderId": "42"
+        }
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 7500,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 409,
+          "body": {
+            "code": "reference_conflict",
+            "message": "m"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "expired",
+            "checkout_url": null,
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 201,
+          "body": {
+            "id": "pay_2",
+            "reference": "42-2",
+            "amount": 7500,
+            "currency": null,
+            "commission": 150,
+            "net_amount": 7350,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_2",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/payments",
+          "query_includes": {
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-2"
+          }
+        }
+      ],
+      "expect": {
+        "status": 200,
+        "body": {
+          "payment": {
+            "id": "pay_2",
+            "reference": "42-2",
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_2",
+            "amount": 7500,
+            "currency": null,
+            "expires_at": "2026-11-15T11:00:00Z",
+            "method": "mobile_money"
+          }
+        }
+      }
+    },
+    {
+      "name": "démarrer : changement d'offre pendant une demande en cours chez l'opérateur → aucun second paiement",
+      "request": {
+        "method": "POST",
+        "path": "/payments",
+        "body": {
+          "orderId": "42"
+        }
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 7500,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 409,
+          "body": {
+            "code": "reference_conflict",
+            "message": "m"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 409,
+          "body": {
+            "code": "payment_in_progress",
+            "message": "m"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/payments",
+          "query_includes": {
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments/pay_1/cancel"
+        }
+      ],
+      "expect": {
+        "status": 409,
+        "body": {
+          "code": "payment_in_progress",
+          "retryable": true
+        }
+      }
+    },
+    {
+      "name": "démarrer : changement d'offre alors que l'ancien essai vient d'être payé → aucun second paiement",
+      "request": {
+        "method": "POST",
+        "path": "/payments",
+        "body": {
+          "orderId": "42"
+        }
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 7500,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 409,
+          "body": {
+            "code": "reference_conflict",
+            "message": "m"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 409,
+          "body": {
+            "code": "payment_already_completed",
+            "message": "m"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "POST",
+          "path": "/v1/payments",
+          "body_includes": {
+            "amount": 7500,
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "GET",
+          "path": "/v1/payments",
+          "query_includes": {
+            "reference": "42-1"
+          }
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments/pay_1/cancel"
+        }
+      ],
+      "expect": {
+        "status": 409,
+        "body": {
+          "code": "payment_already_completed",
+          "retryable": false
         }
       }
     },
@@ -1020,6 +1452,153 @@
             "expires_at": "2026-11-15T11:00:00Z",
             "method": "card"
           }
+        }
+      }
+    },
+    {
+      "name": "annuler son paiement (le client change d'offre) → expiré, plus de lien",
+      "request": {
+        "method": "POST",
+        "path": "/payments/pay_1/cancel"
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 5000,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "expired",
+            "checkout_url": null,
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z",
+            "canceled_at": "2026-11-16T09:00:00Z",
+            "cancel_reason": "canceled_by_partner"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "GET",
+          "path": "/v1/payments/pay_1"
+        },
+        {
+          "method": "POST",
+          "path": "/v1/payments/pay_1/cancel"
+        }
+      ],
+      "expect": {
+        "status": 200,
+        "body": {
+          "payment": {
+            "id": "pay_1",
+            "reference": "42-1",
+            "status": "expired",
+            "checkout_url": null,
+            "amount": 5000,
+            "currency": null,
+            "expires_at": "2026-11-15T11:00:00Z",
+            "method": "mobile_money"
+          }
+        }
+      }
+    },
+    {
+      "name": "annuler le paiement d'une commande qui n'est pas la sienne → 404, rien n'est annulé",
+      "request": {
+        "method": "POST",
+        "path": "/payments/pay_9/cancel"
+      },
+      "user": "u1",
+      "orders": {
+        "42": {
+          "amount": 5000,
+          "customer": {
+            "email": "awa@exemple.tg",
+            "name": "Awa Mensah"
+          }
+        }
+      },
+      "gateway": [
+        {
+          "status": 200,
+          "body": {
+            "id": "pay_9",
+            "reference": "99-1",
+            "amount": 5000,
+            "currency": null,
+            "commission": 100,
+            "net_amount": 4900,
+            "status": "pending",
+            "checkout_url": "https://pay-api.technas.fr/checkout/pay_1",
+            "metadata": {},
+            "test_mode": true,
+            "created_at": "2026-11-15T10:00:00Z",
+            "expires_at": "2026-11-15T11:00:00Z"
+          }
+        }
+      ],
+      "expect_gateway": [
+        {
+          "method": "GET",
+          "path": "/v1/payments/pay_9"
+        }
+      ],
+      "expect": {
+        "status": 404,
+        "body": {
+          "code": "payment_not_found",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "name": "annuler sans authentification → 401",
+      "request": {
+        "method": "POST",
+        "path": "/payments/pay_1/cancel"
+      },
+      "user": null,
+      "orders": {},
+      "gateway": [],
+      "expect_gateway": [],
+      "expect": {
+        "status": 401,
+        "body": {
+          "code": "unauthorized",
+          "retryable": false
         }
       }
     },
