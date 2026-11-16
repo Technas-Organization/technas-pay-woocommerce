@@ -13,6 +13,16 @@ namespace TechnasPay\Internal;
  */
 final class Data
 {
+    /**
+     * Un identifiant mis dans un chemin d'adresse : lettres, chiffres, `_` et `-`, 128 au plus.
+     * Ni `.`, ni `/`, ni rien d'encodé : un proxy qui décode `%2F` puis normalise le chemin
+     * enverrait sinon l'appel ailleurs. `\z` et non `$` : `$` accepte un saut de ligne final.
+     */
+    public static function isId(string $id): bool
+    {
+        return preg_match('/\A[A-Za-z0-9_-]{1,128}\z/', $id) === 1;
+    }
+
     /** @return array<string, mixed> */
     public static function asMap(mixed $v): array
     {

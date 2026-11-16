@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.4.1 — 2026-11-16
+
+- Sécurité : identifiants validés avant tout appel. Un identifiant de paiement ou de remboursement mis dans un chemin (`getPayment`, `cancelPayment`, `getRefund`, `refund`, `recordExternalRefund`, `simulateTestPayment`) doit correspondre à `[A-Za-z0-9_-]{1,128}` ; sinon `invalid_request` (statut 0, non rejouable), sans appel, et le message ne cite pas la valeur reçue. Avant, `getPayment("../balance")` partait en `/v1/payments/..%2Fbalance` avec votre clé : un proxy qui décode puis normalise le chemin l'aurait envoyé vers une autre route.
+- Routes toutes faites : un identifiant de paiement hors de ce motif (`GET /payments/{id}`, `POST /payments/{id}/cancel`) rend 404 `payment_not_found`, un `orderId` hors du motif rend 404 `order_not_found`, sans appel ni lecture de la commande.
+- Installation : `composer require technas/pay:^0.4.1`.
+
 ## 0.4.0 — 2026-11-16
 
 - `cancelPayment($id)` (`POST /v1/payments/{id}/cancel`) : annule définitivement un paiement que personne n'a commencé à payer (le client change d'offre). Rend le paiement `expired`, sans lien ; rejouer rend le même résultat. Refus : `payment_already_completed` (non rejouable) et `payment_in_progress` (rejouable, comme avant). Un identifiant vide est refusé sans appel.
