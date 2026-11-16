@@ -217,10 +217,13 @@ tp_check(!wc_get_order($ot->get_id())->is_paid() && wc_get_order($ot->get_id())-
 // 6. M3 : un second paiement réussi pour une commande déjà payée est signalé, jamais ignoré.
 $o3 = tp_order();
 [$id3, $ref3] = tp_start($fake, $mm, $o3, 'pay_3a');
-[$b3, $s3] = tp_completed($o3, $id3, $ref3);
-Technas_Pay_Webhook::handle($b3, $s3);
+// Le client ouvre aussi la carte ; le service n'a pas l'annulation (404) : les deux pages restent ouvertes.
+$fake->queue[] = [200, tp_payment(['id' => 'pay_3a', 'reference' => $ref3])];
+$fake->queue[] = [404, ['code' => 'not_found', 'message' => 'Not Found']];
 $fake->queue[] = [201, tp_payment(['id' => 'pay_3b', 'reference' => 'wc-' . $o3->get_id() . '-card-1', 'method' => 'card', 'currency' => 'XOF', 'checkout_url' => 'https://pay-api.technas.fr/checkout/pay_3b'])];
 Technas_Pay_WC::start_payment(wc_get_order($o3->get_id()), 'card', 'https://boutique.test/merci');
+[$b3, $s3] = tp_completed(wc_get_order($o3->get_id()), $id3, $ref3);
+Technas_Pay_Webhook::handle($b3, $s3);
 [$b3b, $s3b] = tp_completed(wc_get_order($o3->get_id()), 'pay_3b', 'wc-' . $o3->get_id() . '-card-1', ['method' => 'card']);
 Technas_Pay_Webhook::handle($b3b, $s3b);
 tp_check(wc_get_order($o3->get_id())->get_status() === 'on-hold', 'M3 : second paiement reçu : commande en attente, à rembourser', wc_get_order($o3->get_id())->get_status());
