@@ -380,8 +380,8 @@ final class Technas_Pay_WC {
 		$networks = $offered ? array_filter( $q->networks, static fn ( \TechnasPay\Model\QuoteNetwork $n ): bool => in_array( $n->network, $offered, true ) ) : array();
 		$networks = $networks ? $networks : $q->networks;
 		$totals   = array_map( static fn ( \TechnasPay\Model\QuoteNetwork $n ): int|float => $n->customerTotal, $networks );
-		$high   = $totals ? max( $totals ) : $q->customerTotal;
-		$low    = $totals ? min( $totals ) : $q->customerTotal;
+		$high     = $totals ? max( $totals ) : $q->customerTotal;
+		$low      = $totals ? min( $totals ) : $q->customerTotal;
 		if ( $high <= $q->amount ) {
 			return '';
 		}
