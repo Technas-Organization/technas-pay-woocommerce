@@ -3,7 +3,7 @@
  * Plugin Name:       Technas Pay for WooCommerce
  * Plugin URI:        https://github.com/Technas-Organization/technas-pay-woocommerce
  * Description:       Accept mobile money (Orange Money, MTN MoMo, Moov, Wave…) and card payments with Technas Pay. Card: 1% (plus your card account fees). Mobile money: 2%, and you choose who pays the fees. No subscription.
- * Version:           0.5.0
+ * Version:           0.6.0
  * Requires at least: 6.3
  * Requires PHP:      8.1
  * Author:            Technas
@@ -18,7 +18,7 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'TECHNAS_PAY_WC_VERSION', '0.5.0' );
+define( 'TECHNAS_PAY_WC_VERSION', '0.6.0' );
 define( 'TECHNAS_PAY_WC_FILE', __FILE__ );
 define( 'TECHNAS_PAY_WC_DIR', __DIR__ );
 

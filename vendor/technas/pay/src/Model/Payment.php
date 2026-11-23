@@ -62,6 +62,17 @@ final class Payment
         public readonly int|float|null $customerTotal = null,
         /** Les frais du réseau de paiement dans `customerTotal` ; `null` : inconnus. */
         public readonly int|float|null $processingFee = null,
+        /**
+         * Le réseau avec lequel le client a payé (`Network::ALL`), une fois payé ; `null` avant, ou par
+         * carte. Une valeur que ce SDK ne connaît pas encore est gardée telle quelle.
+         */
+        public readonly ?string $network = null,
+        /**
+         * Les réseaux permis pour ce paiement, s'il les a restreints (`networks` à la création) ; `null` sinon.
+         *
+         * @var list<string>|null
+         */
+        public readonly ?array $networks = null,
     ) {
     }
 
@@ -95,6 +106,8 @@ final class Payment
             D::str($r, 'fees_paid_by', 'partner'),
             D::nnum($r, 'customer_total'),
             D::nnum($r, 'processing_fee'),
+            D::nstr($r, 'network'),
+            D::nstrings($r, 'networks'),
         );
     }
 

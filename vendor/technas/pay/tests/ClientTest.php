@@ -6,6 +6,8 @@ namespace TechnasPay\Tests;
 
 use PHPUnit\Framework\TestCase;
 use TechnasPay\Model\KycRequired;
+use TechnasPay\Network;
+use TechnasPay\PaymentMethod;
 use TechnasPay\Model\Refund;
 use TechnasPay\Model\Settlement;
 use TechnasPay\Status;
@@ -558,5 +560,94 @@ final class ClientTest extends TestCase
         $p = $pay->verifyWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET))->payment;
         self::assertNotNull($p);
         self::assertSame([200, 'partner', null, null], [$p->customerAmount, $p->feesPaidBy, $p->customerTotal, $p->processingFee]);
+    }
+
+    public function testEnumerationsFermees(): void
+    {
+        self::assertSame(['mobile_money', 'card'], PaymentMethod::ALL);
+        self::assertSame(['mixx', 'moov', 'mtn_momo', 'orange_money', 'wave', 'airtel_money', 'free_money', 'celtiis_cash', 'djamo', 'expresso',
+            'wizall', 'mobicash', 'mpesa', 'telecel_cash', 'airteltigo_money', 'afrimoney', 'qmoney', 'tnm_mpamba', 'emola', 'zamtel_kwacha',
+            'ezypesa', 'halopesa', 'tpesa'], Network::ALL);
+        self::assertTrue(Network::isValid(Network::MIXX));
+        self::assertFalse(Network::isValid('togocel'));
+        self::assertFalse(PaymentMethod::isValid('cash'));
+    }
+
+    public function testReseauxParPaiementEnvoyesEtRelus(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 201, 'body' => ['network' => 'mixx', 'networks' => ['mixx', 'moov']] + self::PAYMENT],
+            ['status' => 201, 'body' => self::PAYMENT],
+        ]);
+        $pay = $this->pay($t);
+        $p = $pay->askForPayment(['amount' => 5000, 'reference' => '42-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'networks' => [Network::MIXX, Network::MOOV]]);
+        self::assertSame(['mixx', 'moov'], $t->jsonBody(0)['networks']);
+        self::assertSame(['mixx', ['mixx', 'moov']], [$p->network, $p->networks]);
+        // Vide : rien d'envoyé ; serveur ancien : null.
+        $q = $pay->askForPayment(['amount' => 5000, 'reference' => '42-2', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'networks' => []]);
+        self::assertArrayNotHasKey('networks', $t->jsonBody(1));
+        self::assertSame([null, null], [$q->network, $q->networks]);
+        foreach ([['togocel'], 'mixx', ['a' => 'mixx'], [Network::MIXX, 5]] as $mauvais) {
+            try {
+                $pay->askForPayment(['amount' => 5000, 'reference' => '42-3', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'networks' => $mauvais]);
+                self::fail('attendu invalid_request');
+            } catch (TechnasPayException $e) {
+                self::assertSame(['invalid_request', 0], [$e->errorCode, $e->status]);
+                self::assertStringNotContainsString('togocel', $e->getMessage());
+            }
+        }
+        self::assertCount(2, $t->calls);
+    }
+
+    public function testMoyensEtReseauxLusEtEcrits(): void
+    {
+        $reponse = ['methods' => [['method' => 'mobile_money', 'enabled' => true], ['method' => 'card', 'enabled' => false]],
+            'networks' => [['network' => 'mixx', 'name' => 'Mixx by Yas', 'country' => 'TG', 'currency' => 'XOF', 'enabled' => true],
+                ['network' => 'nouveau_reseau', 'name' => 'Nouveau', 'country' => 'TG', 'currency' => null, 'enabled' => false]],
+            'network_order' => ['mixx'], 'all_networks' => ['mixx', 'moov']];
+        $t = new FakeTransport([['status' => 200, 'body' => $reponse], ['status' => 200, 'body' => $reponse], ['status' => 200, 'body' => $reponse], ['status' => 200, 'body' => $reponse]]);
+        $pay = $this->pay($t);
+        $m = $pay->getPaymentMethods(' tg');
+        self::assertSame(['GET', 'https://gw.test/v1/payment-methods?country=TG'], [$t->calls[0]['method'], $t->calls[0]['url']]);
+        self::assertSame([['method' => 'mobile_money', 'enabled' => true], ['method' => 'card', 'enabled' => false]], $m->methods);
+        self::assertSame(['mixx', 'Mixx by Yas', 'TG', 'XOF', true], array_values($m->networks[0]));
+        self::assertSame('nouveau_reseau', $m->networks[1]['network']); // valeur inconnue gardée telle quelle
+        self::assertSame([['mixx'], ['mixx', 'moov']], [$m->networkOrder, $m->allNetworks]);
+        $pay->getPaymentMethods();
+        self::assertSame('https://gw.test/v1/payment-methods', $t->calls[1]['url']);
+
+        $pay->setPaymentMethods(['methods' => [PaymentMethod::MOBILE_MONEY], 'networkOrder' => [Network::MIXX, Network::MOOV]]);
+        self::assertSame('PUT', $t->calls[2]['method']);
+        self::assertSame(['methods' => ['mobile_money'], 'network_order' => ['mixx', 'moov']], $t->jsonBody(2));
+        $pay->setPaymentMethods(['networks' => null]);
+        self::assertSame(['networks' => null], $t->jsonBody(3)); // null = tous les réseaux
+
+        foreach ([['network_order' => ['mixx']], ['methods' => ['cash']], ['networks' => ['togocel']], ['networkOrder' => null]] as $mauvais) {
+            try {
+                $pay->setPaymentMethods($mauvais);
+                self::fail('attendu invalid_request');
+            } catch (TechnasPayException $e) {
+                self::assertSame(['invalid_request', 0], [$e->errorCode, $e->status]);
+            }
+        }
+        self::assertCount(4, $t->calls);
+    }
+
+    public function testDevisLitLeReseauEtRefusDeReseau(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 200, 'body' => ['amount' => 1000, 'currency' => 'XOF', 'commission' => 20, 'networks' => [['network' => 'mixx', 'network_name' => 'Mixx by Yas', 'customer_total' => 1000], ['network' => 'togocel', 'customer_total' => 1000]]]],
+            ['status' => 422, 'body' => ['code' => 'network_not_enabled', 'message' => 'm']],
+        ]);
+        $pay = $this->pay($t);
+        $q = $pay->quote(1000, country: 'TG', network: 'togocel'); // ancien code : accepté
+        self::assertSame('togocel', $t->jsonBody(0)['network']);
+        self::assertSame(['mixx', 'togocel'], [$q->networks[0]->network, $q->networks[1]->network]);
+        try {
+            $pay->askForPayment(['amount' => 5000, 'reference' => '42-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'networks' => [Network::WAVE]]);
+            self::fail('attendu network_not_enabled');
+        } catch (TechnasPayException $e) {
+            self::assertSame(['network_not_enabled', 422, false], [$e->errorCode, $e->status, $e->retryable()]);
+        }
     }
 }

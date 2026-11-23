@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.6.0', '>='), 'M1 : le SDK embarqué est au moins 0.6.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0, identifiants validés avant tout appel en 0.4.1, devis et frais en 0.6.0)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.7.0', '>='), 'M1 : le SDK embarqué est au moins 0.7.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0, identifiants validés avant tout appel en 0.4.1, devis et frais en 0.6.0, réseaux en 0.7.0)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -561,6 +561,36 @@ tp_check($mm->get_description() === 'Orange Money, MTN…' && count($fake->calls
 $mo = new MO();
 $mo->import_from_file(TECHNAS_PAY_WC_DIR . '/languages/technas-pay-woocommerce-fr_FR.mo');
 tp_check($mo->translate('Who pays the fees') === 'Qui paie les frais', 'frais : libellé du réglage traduit en français (.mo recompilé)', $mo->translate('Who pays the fees'));
+update_option(Technas_Pay_WC::SETTINGS_OPTION, $settings);
+
+// 12 ter. Réseaux proposés : choix et ordre passés en `networks` (mobile money seulement), ligne de total
+//         calculée sur ces réseaux (`networks[i].network`), valeurs hors de Network::ALL écartées.
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.7.0', '>=') && in_array('mixx', TechnasPay\Network::ALL, true), 'réseaux : le SDK embarqué est au moins 0.7.0 (Network::ALL)', TechnasPay\TechnasPay::VERSION);
+$settings = get_option(Technas_Pay_WC::SETTINGS_OPTION);
+tp_check(Technas_Pay_WC::networks_offered() === [], 'réseaux : aucun choisi = ceux du compte');
+$on0 = tp_order();
+tp_start($fake, $mm, $on0, 'pay_n0');
+tp_check(!array_key_exists('networks', end($fake->calls)['body']), 'réseaux : aucun choisi, aucun « networks » envoyé', end($fake->calls)['body']);
+update_option(Technas_Pay_WC::SETTINGS_OPTION, ['networks' => ['moov', 'mixx', 'togocel'], 'network_order' => 'mixx, inconnu, moov'] + $settings);
+tp_check(Technas_Pay_WC::networks_offered() === ['mixx', 'moov'], 'réseaux : choix dans l\'ordre réglé, valeurs inconnues écartées', Technas_Pay_WC::networks_offered());
+tp_check($mm->validate_network_order_field('network_order', 'Wave, togocel, mixx, wave') === 'wave, mixx', 'réseaux : l\'ordre enregistré ne garde que des valeurs de Network::ALL');
+tp_check($mm->validate_networks_field('networks', ['mixx', 'togocel']) === ['mixx'], 'réseaux : le choix enregistré ne garde que des valeurs de Network::ALL');
+$on1 = tp_order();
+[, , $rn1] = tp_start($fake, $mm, $on1, 'pay_n1', ['networks' => ['mixx', 'moov']]);
+tp_check($rn1['result'] === 'success' && (end($fake->calls)['body']['networks'] ?? null) === ['mixx', 'moov'], 'réseaux : envoyés en networks, dans l\'ordre réglé', end($fake->calls)['body']);
+$on2 = tp_order(12.5, 'technas_pay_card');
+$fake->queue[] = [201, tp_payment(['id' => 'pay_n2', 'reference' => 'wc-' . $on2->get_id() . '-card-1', 'amount' => 12.5, 'currency' => 'EUR', 'method' => 'card'])];
+Technas_Pay_WC::start_payment($on2, 'card', 'https://exemple.test/merci');
+tp_check(!array_key_exists('networks', end($fake->calls)['body']), 'réseaux : jamais de « networks » par carte', end($fake->calls)['body']);
+update_option(Technas_Pay_WC::SETTINGS_OPTION, ['networks' => ['mixx'], 'fees' => 'customer'] + $settings);
+$fake->queue[] = [200, ['amount' => 200, 'customer_total' => 214, 'currency' => 'XOF', 'commission' => 5, 'fees_paid_by' => 'customer',
+    'networks' => [['network' => 'mixx', 'customer_total' => 210], ['network' => 'moov', 'customer_total' => 214]]]];
+$line = Technas_Pay_WC::total_line_for(200, 'TG');
+tp_check(str_contains($line, '210') && !str_contains($line, '214'), 'réseaux : la ligne de total ne compte que les réseaux proposés', $line);
+tp_check(Technas_Pay_WC::customer_message(new \TechnasPay\TechnasPayException('network_not_enabled', 'm', 422)) === 'This payment method is not available right now. Please choose another one.', 'réseaux : network_not_enabled, message client neutre');
+$mo = new MO();
+$mo->import_from_file(TECHNAS_PAY_WC_DIR . '/languages/technas-pay-woocommerce-fr_FR.mo');
+tp_check($mo->translate('Networks offered') === 'Réseaux proposés', 'réseaux : libellé du réglage traduit en français (.mo recompilé)', $mo->translate('Networks offered'));
 update_option(Technas_Pay_WC::SETTINGS_OPTION, $settings);
 
 // 13. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).

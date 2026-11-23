@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.6.0
+composer require technas/pay:^0.7.0
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -89,6 +89,31 @@ $p = $pay->quote(1000, country: 'TG', fees: 'partner');
 - Montant trop petit : `amount_too_low` avec `$e->details['minimumAmount']`. Au Togo, le réseau n'accepte rien sous 200 F : en `'partner'`, 209 F au minimum ; en `'customer'`, 200 F passent.
 - Par carte, seulement `'partner'` : ajouter des frais au paiement par carte d'un consommateur est interdit en Europe. `$pay->quote(20, method: 'card', currency: 'EUR')` rend la commission (`netAmount` null : les frais de la carte dépendent de la carte du client).
 
+### Les moyens et les réseaux : à vous de choisir
+
+Les moyens (`PaymentMethod::ALL` : `'mobile_money'`, `'card'`) et les réseaux mobile money (`Network::ALL` : `'mixx'` pour Mixx by Yas, `'moov'` pour Moov Money / Flooz, `'mtn_momo'`, `'orange_money'`, `'wave'`…) sont des listes fermées, à énumérer. Écrivez `Network::MIXX` plutôt que la chaîne. Un réseau, c'est le porte-monnaie que le client a dans sa poche.
+
+```php
+use TechnasPay\Network;
+use TechnasPay\PaymentMethod;
+
+$ouverts = $pay->getPaymentMethods('TG');
+// $ouverts->networks : [['network' => 'mixx', 'name' => 'Mixx by Yas', 'country' => 'TG', 'currency' => 'XOF', 'enabled' => true], …] dans VOTRE ordre
+// $ouverts->methods, $ouverts->networkOrder, $ouverts->allNetworks
+
+// Réglage du compte : éteindre la carte, mettre Mixx en premier (une clé absente ne change rien ; 'networks' => null = tous)
+$pay->setPaymentMethods(['methods' => [PaymentMethod::MOBILE_MONEY], 'networkOrder' => [Network::MIXX, Network::MOOV]]);
+
+// Pour un paiement : seulement certains réseaux
+$pay->askForPayment([..., 'networks' => [Network::MIXX]]);
+```
+
+- Une valeur hors de `Network::ALL` ou `PaymentMethod::ALL` est refusée avant tout appel (`invalid_request`).
+- `$payment->network` : le réseau avec lequel le client a payé (une fois payé, `null` avant) ; `$payment->networks` : les réseaux permis pour ce paiement s'il les a restreints. L'avis `payment.*` porte `network` aussi.
+- Refus : `method_not_enabled` (moyen éteint sur votre compte), `network_not_enabled` (réseau éteint sur votre compte), `network_not_available` (pas ouvert dans ce pays).
+- Un réseau ouvert après la sortie de ce SDK arrive tel quel, en chaîne : ne plantez pas sur une valeur inconnue.
+- La page de paiement Technas et les devis respectent vos réseaux et leur ordre. L'étape où le client confirme sur la page du réseau de paiement peut encore lui montrer tous les réseaux du pays : ce sera fermé dans une prochaine version.
+
 ## 3. Recevoir l'avis de paiement
 
 Technas signe chaque avis (`X-Technas-Payment-Signature: t=…,s=…`). Le SDK vérifie la signature sur le **corps brut**, puis appelle votre fonction.
@@ -139,6 +164,7 @@ Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /p
 |---|---|
 | `getPayment($id)`, `getPaymentByReference($ref)` | Statut ; rattraper un avis manqué |
 | `quote($amount, country:, fees:, method:, network:, currency:)`, `getFees(...)` | Devis : ce que le client paiera (`customerTotal`), ce que vous recevrez (`netAmount`), réseau par réseau ; rien n'est créé |
+| `getPaymentMethods($country)`, `setPaymentMethods([...])` | Moyens et réseaux ouverts, activés, et leur ordre ; `Network::ALL`, `PaymentMethod::ALL` |
 | `cancelPayment($id)` | Annuler un paiement que personne n'a commencé à payer (le client change d'offre) |
 | `listTransactions(limit:, status:, cursor:)` | Historique paginé (`nextCursor`) |
 | `refund($paymentId, amount: ?, fees: 'partner'\|'customer', reference: ?)` | Rembourser au numéro ou à la carte qui a payé |

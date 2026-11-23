@@ -46,6 +46,36 @@ final class Technas_Pay_WC {
 	/** Devis du total à payer au paiement (`quote`), gardés quelques minutes par montant et pays. */
 	public const QUOTE_TRANSIENT_PREFIX = 'technas_pay_quote_';
 
+	/**
+	 * Le nom que le client connaît, pour chaque réseau de `Network::ALL` (marques, non traduites).
+	 * Un réseau absent d'ici s'affiche par sa valeur.
+	 */
+	public const NETWORK_NAMES = array(
+		'mixx'             => 'Mixx by Yas',
+		'moov'             => 'Moov Money (Flooz)',
+		'mtn_momo'         => 'MTN MoMo',
+		'orange_money'     => 'Orange Money',
+		'wave'             => 'Wave',
+		'airtel_money'     => 'Airtel Money',
+		'free_money'       => 'Free Money',
+		'celtiis_cash'     => 'Celtiis Cash',
+		'djamo'            => 'Djamo',
+		'expresso'         => 'Expresso',
+		'wizall'           => 'Wizall',
+		'mobicash'         => 'Mobicash',
+		'mpesa'            => 'M-Pesa',
+		'telecel_cash'     => 'Telecel Cash',
+		'airteltigo_money' => 'AirtelTigo Money',
+		'afrimoney'        => 'Afrimoney',
+		'qmoney'           => 'QMoney',
+		'tnm_mpamba'       => 'TNM Mpamba',
+		'emola'            => 'e-Mola',
+		'zamtel_kwacha'    => 'Zamtel Kwacha',
+		'ezypesa'          => 'EzyPesa',
+		'halopesa'         => 'HaloPesa',
+		'tpesa'            => 'T-Pesa',
+	);
+
 	/** Hôtes autorisés pour la page de paiement (redirection du client). */
 	public const CHECKOUT_HOSTS = array( 'pay-api.technas.fr' );
 
@@ -242,6 +272,35 @@ final class Technas_Pay_WC {
 	}
 
 	/**
+	 * Les réseaux proposés au client en mobile money, selon les réglages « Networks offered » (vide :
+	 * tous ceux du compte, rien n'est envoyé) et « Network order » (valeurs séparées par des virgules ;
+	 * les réseaux choisis qui n'y sont pas suivent, dans l'ordre de `Network::ALL`). Seules les valeurs
+	 * de `Network::ALL` sont gardées.
+	 *
+	 * @return list<string>
+	 */
+	public static function networks_offered(): array {
+		$settings = get_option( self::SETTINGS_OPTION, array() );
+		$settings = is_array( $settings ) ? $settings : array();
+		$chosen   = array_values( array_intersect( \TechnasPay\Network::ALL, (array) ( $settings['networks'] ?? array() ) ) );
+		if ( ! $chosen ) {
+			return array();
+		}
+		$order = self::parse_network_order( (string) ( $settings['network_order'] ?? '' ) );
+		return array_values( array_unique( array_merge( array_values( array_intersect( $order, $chosen ) ), $chosen ) ) );
+	}
+
+	/**
+	 * « mixx, moov » → `['mixx', 'moov']` : valeurs de `Network::ALL` seulement, sans doublon.
+	 *
+	 * @return list<string>
+	 */
+	public static function parse_network_order( string $order ): array {
+		$values = array_map( static fn ( string $v ): string => strtolower( trim( $v ) ), explode( ',', $order ) );
+		return array_values( array_unique( array_filter( $values, array( \TechnasPay\Network::class, 'isValid' ) ) ) );
+	}
+
+	/**
 	 * La ligne montrée au client sous « Mobile money » au paiement : ce qu'il paiera, frais du réseau
 	 * de paiement compris, lu dans le devis de Technas (`quote`). Vide quand le client paie exactement
 	 * le total (frais à la charge du marchand), sans panier, ou si le devis n'a pas pu être lu : le
@@ -265,7 +324,7 @@ final class Technas_Pay_WC {
 		$country  = $country !== '' && Status::currencyForCountry( $country ) !== null ? $country : '';
 		$currency = $country === '' ? get_woocommerce_currency() : '';
 		$fees     = self::fees_paid_by();
-		$key      = self::QUOTE_TRANSIENT_PREFIX . md5( implode( '|', array( $amount, $country, $currency, (string) $fees, self::secret_hint() ) ) );
+		$key      = self::QUOTE_TRANSIENT_PREFIX . md5( implode( '|', array( $amount, $country, $currency, (string) $fees, self::secret_hint(), implode( ',', self::networks_offered() ) ) ) );
 		$cached   = get_transient( $key );
 		if ( $cached === 'unavailable' ) {
 			return '';
@@ -311,9 +370,16 @@ final class Technas_Pay_WC {
 		);
 	}
 
-	/** « Tu paieras X F CFA » (un seul montant) ou « entre X et Y » (selon l'opérateur) ; vide si rien ne s'ajoute. */
+	/**
+	 * « Tu paieras X F CFA » (un seul montant) ou « entre X et Y » (selon l'opérateur) ; vide si rien ne
+	 * s'ajoute. Seuls les réseaux proposés comptent (`networks[i].network`) ; si aucun ne correspond
+	 * (réseau inconnu de cette version), tous ceux du devis.
+	 */
 	public static function total_line( \TechnasPay\Model\Quote $q ): string {
-		$totals = array_map( static fn ( \TechnasPay\Model\QuoteNetwork $n ): int|float => $n->customerTotal, $q->networks );
+		$offered  = self::networks_offered();
+		$networks = $offered ? array_filter( $q->networks, static fn ( \TechnasPay\Model\QuoteNetwork $n ): bool => in_array( $n->network, $offered, true ) ) : array();
+		$networks = $networks ? $networks : $q->networks;
+		$totals   = array_map( static fn ( \TechnasPay\Model\QuoteNetwork $n ): int|float => $n->customerTotal, $networks );
 		$high   = $totals ? max( $totals ) : $q->customerTotal;
 		$low    = $totals ? min( $totals ) : $q->customerTotal;
 		if ( $high <= $q->amount ) {
@@ -373,9 +439,15 @@ final class Technas_Pay_WC {
 		if ( $method === 'card' ) {
 			$input['method']   = 'card';
 			$input['currency'] = $order->get_currency();
-		} elseif ( self::fees_paid_by() !== null ) {
+		} else {
 			// Qui paie les frais : mobile money seulement (par carte, toujours le marchand).
-			$input['fees'] = self::fees_paid_by();
+			if ( self::fees_paid_by() !== null ) {
+				$input['fees'] = self::fees_paid_by();
+			}
+			// Réseaux proposés, dans l'ordre choisi ; aucun choisi : ceux du compte.
+			if ( self::networks_offered() ) {
+				$input['networks'] = self::networks_offered();
+			}
 		}
 		// Mobile money : la boutique vend en F CFA, la devise suit le pays du client (XOF ou XAF, même montant).
 		for ( ; ; $attempt++ ) {
@@ -544,6 +616,7 @@ final class Technas_Pay_WC {
 			'card_account_not_ready' => __( 'Card payment is not available yet. Please choose mobile money.', 'technas-pay-woocommerce' ),
 			// Seuil d'identité du compte atteint : rien à dire au client sur le compte du marchand.
 			'kyc_required' => __( 'Mobile money payment is not available right now. Please choose card or try again later.', 'technas-pay-woocommerce' ),
+			'method_not_enabled', 'network_not_enabled', 'network_not_available' => __( 'This payment method is not available right now. Please choose another one.', 'technas-pay-woocommerce' ),
 			'amount_too_low' => __( 'The amount is too low for this payment method.', 'technas-pay-woocommerce' ),
 			// Un seul paiement ouvert par commande : l'ancien n'a pas pu être fermé.
 			'payment_in_progress' => __( 'A payment is already in progress for this order. Complete it, or try again in a few minutes.', 'technas-pay-woocommerce' ),

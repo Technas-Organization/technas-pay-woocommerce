@@ -4,7 +4,7 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.5.0
+Stable tag: 0.6.0
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -18,6 +18,7 @@ Technas Pay brings mobile money and cards together. Your customers pay with Oran
 * A declined payment is not final: the customer can retry on the same page. An expired link can be paid again from the order, without paying twice.
 * A customer who comes back to pay later, or after the order total changed, gets the payment page still open, or a new one at the right amount: an unpaid attempt never blocks a new one. Only one payment is open per order: the previous payment link is closed when the customer switches between mobile money and card, or when the order total changed. If two pages are paid for the same order, the order is put on hold with a note asking you to refund the extra payment.
 * Who pays the fees (mobile money): the customer (they pay the order total plus the payment network fees and the Technas Pay commission; you receive exactly the order total), you (the customer pays the order total, fees included), or your Technas Pay account setting. When the customer pays the fees, the total to pay is shown under "Mobile money" at checkout, from a Technas Pay quote. Card payments: always you.
+* Networks offered (mobile money): choose which networks your customers can pay with (Mixx by Yas, Moov Money, MTN MoMo, Orange Money, Wave…) and their order on the payment page. Leave empty to offer every network enabled on your Technas Pay account.
 * Refund from the WooCommerce order screen, in full or in part.
 * Identity threshold: with a tps_live_ key, the settings show what the account has collected, the threshold, the deadline and a link to the Technas Pay console, and an admin notice warns when the threshold is close or reached. Card payments are not affected.
 * Works with the classic and block checkout, and with HPOS.
@@ -31,6 +32,12 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.6.0 =
+* New "Networks offered" setting in Mobile money (Technas Pay): pick the networks your customers can pay with (empty: every network enabled on your Technas Pay account), and "Network order" for their order on the payment page. Sent with each mobile money payment; card payments are never affected.
+* The total shown at checkout when the customer pays the fees only counts the networks offered.
+* A network or payment method turned off on the account (method_not_enabled, network_not_enabled, network_not_available): the customer sees a neutral message.
+* Technas Pay PHP SDK 0.7.0 (closed lists of payment methods and networks).
 
 = 0.5.0 =
 * New "Who pays the fees" setting in Mobile money (Technas Pay): the customer, you, or your Technas Pay account setting. Sent with each mobile money payment; card payments are never affected.

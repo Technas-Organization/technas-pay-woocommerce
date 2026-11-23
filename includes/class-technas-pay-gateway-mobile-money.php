@@ -24,13 +24,13 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 			__( 'Mobile money', 'technas-pay-woocommerce' ),
 			__( 'Pay with Orange Money, MTN MoMo, Moov Money or Wave.', 'technas-pay-woocommerce' ),
 		) + array(
-			'secret'  => array(
+			'secret'        => array(
 				'title'       => __( 'Technas Pay key', 'technas-pay-woocommerce' ),
 				'type'        => 'technas_secret',
 				'description' => __( 'Starts with tps_test_ (test, no money moves) or tps_live_ (real payments). Shared by mobile money and card. Ask contact@technas.fr for a test key.', 'technas-pay-woocommerce' ),
 				'default'     => '',
 			),
-			'fees'    => array(
+			'fees'          => array(
 				'title'       => __( 'Who pays the fees', 'technas-pay-woocommerce' ),
 				'type'        => 'select',
 				'options'     => array(
@@ -41,17 +41,53 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 				'description' => __( 'Mobile money only (card payments: always you). When the customer pays the fees, the total to pay is shown under « Mobile money » at checkout.', 'technas-pay-woocommerce' ),
 				'default'     => 'account',
 			),
-			'kyc'     => array(
+			'networks'      => array(
+				'title'       => __( 'Networks offered', 'technas-pay-woocommerce' ),
+				'type'        => 'multiselect',
+				'class'       => 'wc-enhanced-select',
+				'options'     => self::network_options(),
+				'description' => __( 'Leave empty to offer every network enabled on your Technas Pay account.', 'technas-pay-woocommerce' ),
+				'default'     => array(),
+			),
+			'network_order' => array(
+				'title'       => __( 'Network order', 'technas-pay-woocommerce' ),
+				'type'        => 'text',
+				'placeholder' => 'mixx, moov',
+				/* translators: %s: list of network values */
+				'description' => sprintf( __( 'Order of the networks offered on the payment page, separated by commas. Values: %s.', 'technas-pay-woocommerce' ), implode( ', ', \TechnasPay\Network::ALL ) ),
+				'default'     => '',
+			),
+			'kyc'           => array(
 				'title' => __( 'Identity threshold', 'technas-pay-woocommerce' ),
 				'type'  => 'technas_kyc',
 			),
-			'webhook' => array(
+			'webhook'       => array(
 				'title'       => __( 'Notification address', 'technas-pay-woocommerce' ),
 				'type'        => 'title',
 				/* translators: %s: webhook URL */
 				'description' => sprintf( __( 'Give this address to Technas: it is how your orders get marked as paid. <br><code>%s</code>', 'technas-pay-woocommerce' ), esc_url( Technas_Pay_WC::webhook_url() ) ),
 			),
 		);
+	}
+
+	/** Les réseaux de `Network::ALL`, avec le nom que le client connaît. */
+	private static function network_options(): array {
+		$options = array();
+		foreach ( \TechnasPay\Network::ALL as $network ) {
+			$options[ $network ] = Technas_Pay_WC::NETWORK_NAMES[ $network ] ?? $network;
+		}
+		return $options;
+	}
+
+	/** « Network order » : seules les valeurs de `Network::ALL` sont gardées, sans doublon. */
+	public function validate_network_order_field( string $key, $value ): string {
+		return implode( ', ', Technas_Pay_WC::parse_network_order( sanitize_text_field( wp_unslash( (string) $value ) ) ) );
+	}
+
+	/** « Networks offered » : seules les valeurs de `Network::ALL` sont gardées. */
+	public function validate_networks_field( string $key, $value ): array {
+		$value = is_array( $value ) ? array_map( 'sanitize_text_field', wp_unslash( $value ) ) : array();
+		return array_values( array_intersect( \TechnasPay\Network::ALL, $value ) );
 	}
 
 	/**

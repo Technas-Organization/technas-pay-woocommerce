@@ -235,3 +235,18 @@ msgstr "En mobile money, vous paierez entre %1$s et %2$s F CFA selon votre opér
 
 msgid "Technas Pay: the customer pays up to %1$s (payment network fees %2$s); you receive %3$s."
 msgstr "Technas Pay : le client paie au plus %1$s (frais du réseau de paiement %2$s) ; vous recevez %3$s."
+
+msgid "This payment method is not available right now. Please choose another one."
+msgstr "Ce moyen de paiement n'est pas disponible pour le moment. Choisissez-en un autre."
+
+msgid "Networks offered"
+msgstr "Réseaux proposés"
+
+msgid "Leave empty to offer every network enabled on your Technas Pay account."
+msgstr "Laissez vide pour proposer tous les réseaux activés sur votre compte Technas Pay."
+
+msgid "Network order"
+msgstr "Ordre des réseaux"
+
+msgid "Order of the networks offered on the payment page, separated by commas. Values: %s."
+msgstr "Ordre des réseaux proposés sur la page de paiement, séparés par des virgules. Valeurs : %s."

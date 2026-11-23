@@ -12,6 +12,7 @@ use TechnasPay\Http\Transport;
 use TechnasPay\Model\CardAccount;
 use TechnasPay\Model\CardOnboardingLink;
 use TechnasPay\Model\Payment;
+use TechnasPay\Model\PaymentMethods;
 use TechnasPay\Model\Quote;
 use TechnasPay\Model\Refund;
 use TechnasPay\Model\TopUp;
@@ -28,7 +29,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.6.0';
+    public const VERSION = '0.7.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -173,7 +174,11 @@ final class TechnasPay
      * (`['email' => …, 'name' => …, 'phone' => ?, 'country' => ?]`), `returnUrl`.
      * Facultatifs : `method` (`mobile_money` par défaut, ou `card` qui exige `currency`), `currency`
      * (ne la passez pas en zone franc CFA : elle suit le pays du client), `description`, `metadata`,
-     * `allowedCountries`, `excludedCountries`, `askCountry`, `fees`.
+     * `allowedCountries`, `excludedCountries`, `askCountry`, `fees`, `networks`.
+     *
+     * `networks` : les réseaux mobile money permis pour CE paiement, parmi `Network::ALL` (et ceux
+     * activés sur votre compte) ; absent ou vide : tous ceux que vous avez activés. Une valeur hors de
+     * `Network::ALL` est refusée avant tout appel (`invalid_request`).
      *
      * `fees` (mobile money en franc CFA) : qui paie les frais. `customer` : le client paie votre prix
      * + les frais du réseau de paiement + la commission Technas, vous recevez EXACTEMENT `amount` ;
@@ -185,11 +190,12 @@ final class TechnasPay
      */
     public function askForPayment(array $input): Payment
     {
-        $method = $input['method'] ?? 'mobile_money';
-        if ($method !== 'mobile_money' && $method !== 'card') {
+        $method = $input['method'] ?? PaymentMethod::MOBILE_MONEY;
+        if (!PaymentMethod::isValid($method)) {
             throw new TechnasPayException('invalid_request', 'method vaut "mobile_money" ou "card"');
         }
         self::positive($input['amount'] ?? null, $method === 'mobile_money');
+        $networks = self::networks($input['networks'] ?? null, 'networks');
         $currency = strtoupper(trim(D::str($input, 'currency')));
         if ($currency === '') {
             $country = trim(D::str(D::map($input, 'customer'), 'country'));
@@ -224,7 +230,84 @@ final class TechnasPay
         if ($fees !== null) {
             $body['fees'] = $fees;
         }
+        if ($networks !== null && $networks !== []) {
+            $body['networks'] = $networks;
+        }
         return Payment::fromApi($this->callMap('POST', '/v1/payments', $body));
+    }
+
+    /**
+     * Une liste de réseaux de `Network::ALL` (`null` laissé tel quel), sinon `invalid_request` avant
+     * tout appel. Le message ne cite pas la valeur reçue.
+     *
+     * @return list<string>|null
+     */
+    private static function networks(mixed $networks, string $field): ?array
+    {
+        if ($networks === null) {
+            return null;
+        }
+        if (!is_array($networks) || !array_is_list($networks)) {
+            throw new TechnasPayException('invalid_request', "$field est une liste de réseaux (Network::ALL)");
+        }
+        $out = [];
+        foreach ($networks as $n) {
+            if (!is_string($n) || !Network::isValid($n)) {
+                throw new TechnasPayException('invalid_request', "$field : réseau inconnu ; valeurs permises : Network::ALL");
+            }
+            $out[] = $n;
+        }
+        return $out;
+    }
+
+    /**
+     * Les moyens et réseaux ouverts pour votre compte (par pays si `$country` est donné), ce que vous
+     * avez activé (`enabled`) et votre ordre d'affichage. Pour construire votre propre choix de
+     * paiement, ou vos réglages.
+     */
+    public function getPaymentMethods(?string $country = null): PaymentMethods
+    {
+        $country = strtoupper(trim((string) $country));
+        return PaymentMethods::fromApi($this->callMap('GET', '/v1/payment-methods' . ($country === '' ? '' : '?' . http_build_query(['country' => $country]))));
+    }
+
+    /**
+     * Active ou éteint des moyens et des réseaux, et fixe l'ordre d'affichage sur la page de paiement.
+     * Clés : `methods` (parmi `PaymentMethod::ALL`), `networks` (parmi `Network::ALL` ; `null` = tous
+     * les réseaux), `networkOrder` (parmi `Network::ALL`). Une clé absente ne change rien. Une clé ou
+     * une valeur inconnue est refusée avant tout appel (`invalid_request`).
+     *
+     * ```php
+     * $pay->setPaymentMethods(['methods' => [PaymentMethod::MOBILE_MONEY], 'networkOrder' => [Network::MIXX, Network::MOOV]]);
+     * ```
+     *
+     * @param array<string, mixed> $input `['methods' => list<string>|null, 'networks' => list<string>|null, 'networkOrder' => list<string>]`, chaque clé facultative
+     */
+    public function setPaymentMethods(array $input): PaymentMethods
+    {
+        $unknown = array_diff(array_keys($input), ['methods', 'networks', 'networkOrder']);
+        if ($unknown !== []) {
+            throw new TechnasPayException('invalid_request', 'Clés permises : methods, networks, networkOrder');
+        }
+        $body = [];
+        if (array_key_exists('methods', $input)) {
+            $methods = $input['methods'];
+            if ($methods !== null && (!is_array($methods) || !array_is_list($methods) || array_filter($methods, static fn (mixed $m): bool => !PaymentMethod::isValid($m)) !== [])) {
+                throw new TechnasPayException('invalid_request', 'methods : valeurs permises : PaymentMethod::ALL');
+            }
+            $body['methods'] = $methods;
+        }
+        if (array_key_exists('networks', $input)) {
+            $body['networks'] = self::networks($input['networks'], 'networks');
+        }
+        if (array_key_exists('networkOrder', $input)) {
+            $order = self::networks($input['networkOrder'], 'networkOrder');
+            if ($order === null) {
+                throw new TechnasPayException('invalid_request', 'networkOrder est une liste de réseaux (Network::ALL)');
+            }
+            $body['network_order'] = $order;
+        }
+        return PaymentMethods::fromApi($this->callMap('PUT', '/v1/payment-methods', $body));
     }
 
     /** `fees` : absent, `partner` ou `customer`. */
@@ -246,14 +329,15 @@ final class TechnasPay
      * ```
      *
      * `$method` : `mobile_money` (défaut) ou `card` ; `$country` : pays du client (sans lui : tous les
-     * pays de la devise) ; `$network` : un réseau précis (`network` d'un devis précédent) ;
+     * pays de la devise) ; `$network` : un réseau précis, de `Network::ALL` (un ancien code, comme
+     * `togocel`, reste accepté par le service) ;
      * `$currency` : sans pays, `XOF` ou `XAF`, obligatoire par carte ; `$fees` : `partner` ou
      * `customer` (absent : le réglage de votre compte). Montant trop petit : `amount_too_low`, avec
      * `$e->details['minimumAmount']`.
      */
     public function quote(int|float $amount, ?string $country = null, ?string $fees = null, ?string $method = null, ?string $network = null, ?string $currency = null): Quote
     {
-        if ($method !== null && $method !== 'mobile_money' && $method !== 'card') {
+        if ($method !== null && !PaymentMethod::isValid($method)) {
             throw new TechnasPayException('invalid_request', 'method vaut "mobile_money" ou "card"');
         }
         self::positive($amount, $method !== 'card');

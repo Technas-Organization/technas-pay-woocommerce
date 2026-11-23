@@ -10,7 +10,10 @@ use TechnasPay\Internal\Data as D;
 final class QuoteNetwork
 {
     public function __construct(
-        /** Code du réseau (ex. `togocel`). */
+        /**
+         * Le réseau, de `Network::ALL` (ex. `mixx`). Avant le 23/11/2026 le service rendait un code
+         * technique (`togocel`) ; une valeur inconnue de ce SDK est gardée telle quelle.
+         */
         public readonly string $network,
         /** Le nom que le client connaît (ex. « Mixx by Yas »). */
         public readonly string $networkName,

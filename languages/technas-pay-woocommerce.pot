@@ -234,3 +234,18 @@ msgstr ""
 
 msgid "Technas Pay: the customer pays up to %1$s (payment network fees %2$s); you receive %3$s."
 msgstr ""
+
+msgid "This payment method is not available right now. Please choose another one."
+msgstr ""
+
+msgid "Networks offered"
+msgstr ""
+
+msgid "Leave empty to offer every network enabled on your Technas Pay account."
+msgstr ""
+
+msgid "Network order"
+msgstr ""
+
+msgid "Order of the networks offered on the payment page, separated by commas. Values: %s."
+msgstr ""

@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.6.0
+composer require technas/pay:^0.7.0
 ```
 
 ## Quelle méthode pour quoi
@@ -25,6 +25,8 @@ composer require technas/pay:^0.6.0
 | Faire payer une commande | `$pay->askForPayment(['amount' => 5000, 'reference' => Status::retryReference($orderId, $attempt), 'customer' => ['email' => …, 'name' => …], 'returnUrl' => …])`, puis rediriger (303) vers `$payment->checkoutUrl` |
 | Savoir combien le client paiera et combien vous recevrez, avant de créer le paiement | `$pay->quote(200, country: 'TG', fees: ?)` (ou `$pay->getFees`) → `customerTotal` (à afficher au client), `processingFee`, `commission`, `netAmount`, `networks` (`QuoteNetwork`) |
 | Faire payer TOUS les frais au client (vous recevez exactement `amount`) | `'fees' => 'customer'` dans `askForPayment` (ou réglage du compte) ; `'partner'` : le client paie `amount`, frais compris |
+| Lister les moyens et réseaux ouverts, ce qui est activé, l'ordre | `$pay->getPaymentMethods('TG')` ; constantes `PaymentMethod::ALL`, `Network::ALL` (`Network::MIXX`, `Network::MOOV`…) |
+| Activer / éteindre des moyens et réseaux, fixer l'ordre d'affichage | `$pay->setPaymentMethods(['methods' => ?, 'networks' => ?, 'networkOrder' => ?])` ; par paiement : `'networks' => [Network::MIXX]` dans `askForPayment` |
 | Savoir qu'elle est payée | avis signé : `$pay->handleWebhook($corpsBrut, $signature, new WebhookHandlers(onCompleted: …))` |
 | Rattraper un avis manqué | `$pay->getPaymentByReference($reference)` |
 | Savoir si on peut relancer | `onExpired`, ou `Status::canRetry($pay->getPayment($id)->status)` |
@@ -278,6 +280,8 @@ En réel, un compte sans pièce d'identité vérifiée voit ses **nouveaux** pai
 | `risk_not_accepted` | Montrer `$e->details['risk']` à l'utilisateur ; n'activer qu'avec son accord explicite |
 | `fx_mode_unavailable`, `fx_channel_unavailable` | Mode `converted` pas ouvert : proposer `local` (avec l'accord de l'utilisateur sur le risque) ou rester en `none` |
 | `quote_expired` | Le client rechoisit son pays sur la page, rien à faire côté code |
+| `method_not_enabled`, `network_not_enabled` | Moyen ou réseau éteint sur le compte : ne pas le proposer ; le marchand le rallume avec `setPaymentMethods` |
+| `network_not_available` | Réseau pas ouvert dans ce pays : `getPaymentMethods($country)` dit lesquels le sont |
 | `reference_conflict` | Même référence, autres valeurs : ne pas réutiliser la référence |
 | `payment_already_completed` | `cancelPayment` : le paiement est déjà payé. Relire le paiement ; ne créer aucun nouvel essai |
 | `payment_in_progress` | Réessayer dans une minute, même appel. Sur `cancelPayment` : ne créez PAS de second paiement, attendez l'avis de l'issue |

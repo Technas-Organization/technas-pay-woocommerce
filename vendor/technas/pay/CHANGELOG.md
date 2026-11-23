@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.0 — 2026-11-23
+
+Les moyens et les réseaux, en listes fermées :
+- classes `TechnasPay\PaymentMethod` (`MOBILE_MONEY`, `CARD`, `ALL`, `isValid()`) et `TechnasPay\Network` (`MIXX` pour Mixx by Yas, `MOOV` pour Moov Money / Flooz, `MTN_MOMO`, `ORANGE_MONEY`, `WAVE`… 23 réseaux, `ALL`, `isValid()`) ;
+- `$pay->getPaymentMethods(?string $country)` (`GET /v1/payment-methods`) et `$pay->setPaymentMethods(['methods' => ?, 'networks' => ?, 'networkOrder' => ?])` (`PUT /v1/payment-methods` ; clé absente = inchangé, `'networks' => null` = tous) → `PaymentMethods` (`methods`, `networks`, `networkOrder`, `allNetworks`) ;
+- `askForPayment` : option `networks`, les réseaux permis pour ce paiement. Une valeur hors de `Network::ALL` est refusée avant tout appel (`invalid_request`) ;
+- `Payment` et l'avis `$event->payment` : `network` (réseau avec lequel le client a payé, `null` avant) ; `Payment` : `networks` (`null` si non restreint) ;
+- erreurs `method_not_enabled`, `network_not_enabled`, `network_not_available` (422) documentées ;
+- ⚠️ `quote()` : `networks[$i]->network` vaut maintenant un réseau de `Network::ALL` (`mixx`, `moov`) au lieu d'un code technique (`togocel`, `moov_tg`). Relisez tout code qui comparait ces codes. En entrée, `quote(network: 'togocel')` reste accepté et vise `mixx`. Une valeur inconnue de ce SDK est gardée telle quelle ;
+- Installation : `composer require technas/pay:^0.7.0`.
+
 ## 0.6.0 — 2026-11-23
 
 Qui paie les frais, et combien paie le client :
