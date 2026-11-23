@@ -7,6 +7,7 @@ namespace TechnasPay\Tests;
 use PHPUnit\Framework\TestCase;
 use TechnasPay\Model\KycRequired;
 use TechnasPay\Model\Refund;
+use TechnasPay\Model\Settlement;
 use TechnasPay\Status;
 use TechnasPay\TechnasPay;
 use TechnasPay\TechnasPayException;
@@ -396,6 +397,49 @@ final class ClientTest extends TestCase
             [$k->reason, $k->blocked, $k->stage, $k->blockReason, $k->daysElapsed, $k->graceDays, $k->firstCollectedAt]);
     }
 
+    public function testAvisReversement(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $seen = [];
+        $h = new WebhookHandlers(
+            onSettlement: function (Event $e) use (&$seen) { $seen[] = $e->type . ':' . $e->settlement?->status; },
+            onTopUp: fn () => self::fail('mauvaise fonction'),
+            onRefund: fn () => self::fail('mauvaise fonction'),
+        );
+        $data = ['id' => 'b1e7', 'amount' => 392, 'fee' => 61, 'net_amount' => 331, 'currency' => 'XOF',
+            'status' => 'completed', 'created_at' => '2026-11-19T21:15:59+00:00'];
+        $body = json_encode(['id' => 'evt_s', 'type' => 'settlement.completed', 'created_at' => '2026-11-19T21:18:32+00:00', 'data' => $data]);
+        $r = $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h);
+        self::assertSame(200, $r['status']);
+        $s = $r['event']?->settlement;
+        self::assertInstanceOf(Settlement::class, $s);
+        self::assertSame(['b1e7', 392, 61, 331, 'XOF', 'completed', '2026-11-19T21:15:59+00:00'],
+            [$s->id, $s->amount, $s->fee, $s->netAmount, $s->currency, $s->status, $s->createdAt]);
+        self::assertSame($data, $r['event']?->data, 'le brut reste lisible');
+        self::assertNull($r['event']?->refund);
+        self::assertNull($r['event']?->payment);
+        self::assertSame(400, $pay->handleWebhook($body, Signature::sign($body, 'autre'), $h)['status']);
+
+        // Échec : même contenu, `status` vaut `failed` ; la somme est recréditée côté serveur.
+        $body = json_encode(['id' => 'evt_s2', 'type' => 'settlement.failed', 'created_at' => 'x', 'data' => ['status' => 'failed'] + $data]);
+        $r = $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h);
+        self::assertSame(['failed', 392], [$r['event']?->settlement?->status, $r['event']?->settlement?->amount]);
+
+        // Champs absents ou d'un autre type : null, jamais une exception.
+        $body = json_encode(['id' => 'evt_s3', 'type' => 'settlement.failed', 'created_at' => 'x', 'data' => ['amount' => '392', 'currency' => ['XOF']]]);
+        $r = $pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), $h);
+        self::assertSame(200, $r['status']);
+        $s = $r['event']?->settlement;
+        self::assertInstanceOf(Settlement::class, $s);
+        self::assertSame([null, null, null, null, null, null, null],
+            [$s->id, $s->amount, $s->fee, $s->netAmount, $s->currency, $s->status, $s->createdAt]);
+        self::assertSame(['settlement.completed:completed', 'settlement.failed:failed', 'settlement.failed:'], $seen);
+
+        // Un autre avis ne remplit pas `settlement`.
+        $body = json_encode(['id' => 'evt_t', 'type' => 'balance.topped_up', 'created_at' => 'x', 'data' => ['id' => 't', 'amount' => 5]]);
+        self::assertNull($pay->handleWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET), new WebhookHandlers())['event']?->settlement);
+    }
+
     public function testRefusSeuilDIdentiteEtContrat(): void
     {
         $t = new FakeTransport([
@@ -415,5 +459,104 @@ final class ClientTest extends TestCase
                 self::assertEquals($details, $e->details);
             }
         }
+    }
+
+    public function testFraisAuClientEnvoyesSeulementSilsSontDonnesEtLusSurLePaiement(): void
+    {
+        $t = new FakeTransport([
+            ['status' => 201, 'body' => self::PAYMENT],
+            ['status' => 201, 'body' => ['amount' => 200, 'customer_amount' => 205, 'customer_total' => 214, 'processing_fee' => 9, 'net_amount' => 200, 'fees_paid_by' => 'customer'] + self::PAYMENT],
+        ]);
+        $pay = $this->pay($t);
+        $ancien = $pay->askForPayment(['amount' => 5000, 'reference' => '42-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci']);
+        self::assertArrayNotHasKey('fees', $t->jsonBody(0));
+        // Serveur ancien : customerAmount = amount, feesPaidBy = partner, le reste null.
+        self::assertSame([5000, 'partner', null, null], [$ancien->customerAmount, $ancien->feesPaidBy, $ancien->customerTotal, $ancien->processingFee]);
+
+        $p = $pay->askForPayment(['amount' => 200, 'reference' => '43-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'fees' => 'customer']);
+        self::assertSame('customer', $t->jsonBody(1)['fees']);
+        self::assertSame([200, 205, 214, 9, 200, 'customer'], [$p->amount, $p->customerAmount, $p->customerTotal, $p->processingFee, $p->netAmount, $p->feesPaidBy]);
+
+        try {
+            $pay->askForPayment(['amount' => 200, 'reference' => '44-1', 'customer' => self::CUSTOMER, 'returnUrl' => 'https://p.test/merci', 'fees' => 'client']);
+            self::fail('attendu invalid_request');
+        } catch (TechnasPayException $e) {
+            self::assertSame(['invalid_request', 0], [$e->errorCode, $e->status]);
+        }
+        self::assertCount(2, $t->calls);
+    }
+
+    public function testDevisQuoteEtGetFeesEnvoientLeMontantLePaysEtLeModeEtLisentChaqueReseau(): void
+    {
+        $devis = [
+            'method' => 'mobile_money', 'currency' => 'XOF', 'country' => 'TG', 'fees_paid_by' => 'customer',
+            'amount' => 200, 'customer_amount' => 205, 'customer_total' => 214, 'processing_fee' => 9, 'commission' => 5, 'net_amount' => 200,
+            'networks' => [['network' => 'togocel', 'network_name' => 'Mixx by Yas', 'customer_total' => 214, 'processing_fee' => 9,
+                'commission' => 5, 'net_amount' => 200, 'operator_fee_estimate' => 10, 'otp_required' => false, 'otp_instructions' => null]],
+        ];
+        $partner = ['method' => 'mobile_money', 'currency' => 'XOF', 'country' => 'TG', 'fees_paid_by' => 'partner',
+            'amount' => 1000, 'customer_amount' => 1000, 'customer_total' => 1000, 'processing_fee' => 40, 'commission' => 20, 'net_amount' => 940, 'networks' => []];
+        $carte = ['method' => 'card', 'currency' => 'EUR', 'country' => null, 'fees_paid_by' => 'partner',
+            'amount' => 20, 'customer_amount' => 20, 'customer_total' => 20, 'processing_fee' => null, 'commission' => 0.2, 'net_amount' => null, 'networks' => []];
+        $t = new FakeTransport([['status' => 200, 'body' => $devis], ['status' => 200, 'body' => $partner], ['status' => 200, 'body' => $carte]]);
+        $pay = $this->pay($t);
+
+        $q = $pay->quote(200, country: 'tg', fees: 'customer');
+        self::assertSame('POST', $t->calls[0]['method']);
+        self::assertSame('https://gw.test/v1/quotes', $t->calls[0]['url']);
+        self::assertSame(['amount' => 200, 'country' => 'TG', 'fees' => 'customer'], $t->jsonBody(0));
+        self::assertSame([214, 9, 5, 200, 'customer', 205, 'TG'], [$q->customerTotal, $q->processingFee, $q->commission, $q->netAmount, $q->feesPaidBy, $q->customerAmount, $q->country]);
+        self::assertCount(1, $q->networks);
+        $n = $q->networks[0];
+        self::assertSame(['togocel', 'Mixx by Yas', 214, 9, 5, 200, 10, false, null],
+            [$n->network, $n->networkName, $n->customerTotal, $n->processingFee, $n->commission, $n->netAmount, $n->operatorFeeEstimate, $n->otpRequired, $n->otpInstructions]);
+
+        $p = $pay->getFees(1000, country: 'TG', network: 'togocel');
+        self::assertSame(['amount' => 1000, 'country' => 'TG', 'network' => 'togocel'], $t->jsonBody(1));
+        self::assertSame([1000, 40, 20, 940], [$p->customerTotal, $p->processingFee, $p->commission, $p->netAmount]);
+
+        $c = $pay->quote(20, method: 'card', currency: 'eur');
+        self::assertSame(['amount' => 20, 'method' => 'card', 'currency' => 'EUR'], $t->jsonBody(2));
+        self::assertSame(['card', null, null, []], [$c->method, $c->processingFee, $c->netAmount, $c->networks]);
+
+        foreach ([fn () => $pay->quote(0), fn () => $pay->quote(200.5), fn () => $pay->quote(200, fees: 'client'), fn () => $pay->quote(200, method: 'cash')] as $mauvais) {
+            try {
+                $mauvais();
+                self::fail('attendu un refus avant tout appel');
+            } catch (TechnasPayException $e) {
+                self::assertSame(0, $e->status);
+            }
+        }
+        self::assertCount(3, $t->calls);
+    }
+
+    public function testDevisMontantTropPetitRendLeMinimum(): void
+    {
+        $t = new FakeTransport([['status' => 422, 'body' => ['code' => 'amount_too_low', 'message' => 'trop petit', 'minimum_amount' => 209]]]);
+        try {
+            $this->pay($t)->quote(200, country: 'TG', fees: 'partner');
+            self::fail('attendu amount_too_low');
+        } catch (TechnasPayException $e) {
+            self::assertSame(['amount_too_low', 422, false], [$e->errorCode, $e->status, $e->retryable()]);
+            self::assertSame(['minimumAmount' => 209], $e->details);
+        }
+    }
+
+    public function testAvisPaiementPorteLesFrais(): void
+    {
+        $pay = $this->pay(new FakeTransport());
+        $data = ['id' => 'pay_1', 'reference' => '42-1', 'status' => 'completed', 'amount' => 200, 'currency' => 'XOF', 'commission' => 5, 'net_amount' => 200,
+            'customer_amount' => 205, 'fees_paid_by' => 'customer', 'customer_total' => 214, 'processing_fee' => 9, 'metadata' => []];
+        $body = json_encode(['id' => 'evt_1', 'type' => 'payment.completed', 'created_at' => 'x', 'data' => $data]);
+        $p = $pay->verifyWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET))->payment;
+        self::assertNotNull($p);
+        self::assertSame([205, 'customer', 214, 9], [$p->customerAmount, $p->feesPaidBy, $p->customerTotal, $p->processingFee]);
+
+        // Avis d'un serveur ancien : les défauts.
+        unset($data['customer_amount'], $data['fees_paid_by'], $data['customer_total'], $data['processing_fee']);
+        $body = json_encode(['id' => 'evt_2', 'type' => 'payment.completed', 'created_at' => 'x', 'data' => $data]);
+        $p = $pay->verifyWebhook($body, Signature::sign($body, self::WEBHOOK_SECRET))->payment;
+        self::assertNotNull($p);
+        self::assertSame([200, 'partner', null, null], [$p->customerAmount, $p->feesPaidBy, $p->customerTotal, $p->processingFee]);
     }
 }

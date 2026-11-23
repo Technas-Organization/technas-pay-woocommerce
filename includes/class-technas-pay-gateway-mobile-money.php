@@ -11,7 +11,7 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 	public function __construct() {
 		$this->id                 = 'technas_pay_mobile_money';
 		$this->method_title       = __( 'Mobile money (Technas Pay)', 'technas-pay-woocommerce' );
-		$this->method_description = __( 'Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription.', 'technas-pay-woocommerce' );
+		$this->method_description = __( 'Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription. You choose who pays the fees: the customer (you receive exactly the order total) or you.', 'technas-pay-woocommerce' );
 		parent::__construct();
 	}
 
@@ -29,6 +29,17 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 				'type'        => 'technas_secret',
 				'description' => __( 'Starts with tps_test_ (test, no money moves) or tps_live_ (real payments). Shared by mobile money and card. Ask contact@technas.fr for a test key.', 'technas-pay-woocommerce' ),
 				'default'     => '',
+			),
+			'fees'    => array(
+				'title'       => __( 'Who pays the fees', 'technas-pay-woocommerce' ),
+				'type'        => 'select',
+				'options'     => array(
+					'account'  => __( 'Technas Pay account setting', 'technas-pay-woocommerce' ),
+					'customer' => __( 'The customer: you receive exactly the order total', 'technas-pay-woocommerce' ),
+					'partner'  => __( 'You: the customer pays the order total, fees included', 'technas-pay-woocommerce' ),
+				),
+				'description' => __( 'Mobile money only (card payments: always you). When the customer pays the fees, the total to pay is shown under « Mobile money » at checkout.', 'technas-pay-woocommerce' ),
+				'default'     => 'account',
 			),
 			'kyc'     => array(
 				'title' => __( 'Identity threshold', 'technas-pay-woocommerce' ),
@@ -144,6 +155,26 @@ final class Technas_Pay_Gateway_Mobile_Money extends Technas_Pay_Gateway {
 			WC_Admin_Settings::add_error( __( 'This Technas Pay key looks wrong: it must start with tps_test_ or tps_live_. Copy it again.', 'technas-pay-woocommerce' ) );
 		}
 		return '';
+	}
+
+	/**
+	 * Au paiement, la description dit au client ce qu'il paiera, frais du réseau de paiement compris
+	 * (devis `quote`), quand ce n'est pas exactement le total de la commande. Le devis n'est qu'une
+	 * information : s'il échoue, la description reste celle des réglages et le paiement continue.
+	 */
+	public function get_description() {
+		$description = parent::get_description();
+		if ( is_admin() && ! wp_doing_ajax() ) {
+			return $description;
+		}
+		if ( ! function_exists( 'is_checkout' ) || ! is_checkout() || is_wc_endpoint_url( 'order-received' ) ) {
+			return $description;
+		}
+		$line = Technas_Pay_WC::checkout_total_line();
+		if ( $line === '' ) {
+			return $description;
+		}
+		return trim( $description . "\n\n" . esc_html( $line ) );
 	}
 
 	/** Le mobile money encaisse en francs CFA : la boutique doit vendre en XOF ou en XAF. */

@@ -22,7 +22,7 @@ msgstr ""
 msgid "Mobile money (Technas Pay)"
 msgstr ""
 
-msgid "Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription."
+msgid "Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription. You choose who pays the fees: the customer (you receive exactly the order total) or you."
 msgstr ""
 
 msgid "Mobile money"
@@ -209,4 +209,28 @@ msgstr ""
 #: includes/class-technas-pay-webhook.php
 #, php-format
 msgid "Technas Pay: the order is paid, but an earlier attempt at an outdated amount was also paid (%s). Refund it to the customer before shipping."
+msgstr ""
+
+msgid "Who pays the fees"
+msgstr ""
+
+msgid "Technas Pay account setting"
+msgstr ""
+
+msgid "The customer: you receive exactly the order total"
+msgstr ""
+
+msgid "You: the customer pays the order total, fees included"
+msgstr ""
+
+msgid "Mobile money only (card payments: always you). When the customer pays the fees, the total to pay is shown under « Mobile money » at checkout."
+msgstr ""
+
+msgid "With mobile money you will pay %s F CFA, payment network fees included."
+msgstr ""
+
+msgid "With mobile money you will pay between %1$s and %2$s F CFA depending on your operator, payment network fees included."
+msgstr ""
+
+msgid "Technas Pay: the customer pays up to %1$s (payment network fees %2$s); you receive %3$s."
 msgstr ""

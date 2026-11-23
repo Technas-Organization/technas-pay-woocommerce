@@ -102,6 +102,17 @@ abstract class Technas_Pay_Gateway extends WC_Payment_Gateway {
 			wc_add_notice( __( 'The payment could not be started. Please try again.', 'technas-pay-woocommerce' ), 'error' );
 			return array( 'result' => 'failure' );
 		}
+		if ( $payment->customerTotal !== null && $payment->customerTotal > $payment->amount ) {
+			$order->add_order_note(
+				sprintf(
+				/* translators: 1: what the customer pays, 2: payment network fees, 3: what the shop receives */
+					__( 'Technas Pay: the customer pays up to %1$s (payment network fees %2$s); you receive %3$s.', 'technas-pay-woocommerce' ),
+					$payment->customerTotal,
+					$payment->processingFee ?? '?',
+					$payment->netAmount,
+				)
+			);
+		}
 		$order->update_status( 'pending', __( 'Technas Pay: waiting for the customer to pay on the payment page.', 'technas-pay-woocommerce' ) );
 		WC()->cart?->empty_cart();
 		return array(

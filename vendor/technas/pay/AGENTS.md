@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.4.1
+composer require technas/pay:^0.6.0
 ```
 
 ## Quelle méthode pour quoi
@@ -23,6 +23,8 @@ composer require technas/pay:^0.4.1
 | Besoin | Appel |
 |---|---|
 | Faire payer une commande | `$pay->askForPayment(['amount' => 5000, 'reference' => Status::retryReference($orderId, $attempt), 'customer' => ['email' => …, 'name' => …], 'returnUrl' => …])`, puis rediriger (303) vers `$payment->checkoutUrl` |
+| Savoir combien le client paiera et combien vous recevrez, avant de créer le paiement | `$pay->quote(200, country: 'TG', fees: ?)` (ou `$pay->getFees`) → `customerTotal` (à afficher au client), `processingFee`, `commission`, `netAmount`, `networks` (`QuoteNetwork`) |
+| Faire payer TOUS les frais au client (vous recevez exactement `amount`) | `'fees' => 'customer'` dans `askForPayment` (ou réglage du compte) ; `'partner'` : le client paie `amount`, frais compris |
 | Savoir qu'elle est payée | avis signé : `$pay->handleWebhook($corpsBrut, $signature, new WebhookHandlers(onCompleted: …))` |
 | Rattraper un avis manqué | `$pay->getPaymentByReference($reference)` |
 | Savoir si on peut relancer | `onExpired`, ou `Status::canRetry($pay->getPayment($id)->status)` |
@@ -181,6 +183,15 @@ $handlers = new WebhookHandlers(onCompleted: function (Event $e) use ($pay): voi
 });
 ```
 
+## Qui paie les frais
+
+- **`'fees' => 'customer'`** (mobile money en franc CFA) : le client paie votre prix + les frais du réseau de paiement + la commission Technas ; vous recevez EXACTEMENT `amount`. **`'partner'`** : le client paie `amount`, frais compris. Absent : le réglage du compte.
+- **Le montant à afficher au client** vient de `$pay->quote(...)->customerTotal` : ne le calculez jamais vous-même, n'écrivez aucun taux en dur. Exemple au Togo : 200 F en `'customer'` → le client paie 214 (9 de frais du réseau, 5 de commission), vous recevez 200 ; 1 000 F en `'partner'` → le client paie 1 000, vous recevez 940.
+- **`networks[$i]->operatorFeeEstimate`** est une estimation des frais propres de l'opérateur, prélevés hors Technas : dites « environ », ne la promettez jamais.
+- **Paiement et avis** : `$payment->customerAmount`, `feesPaidBy`, `customerTotal`, `processingFee` (les deux derniers `null` sur un serveur ancien).
+- **Par carte**, seulement `'partner'` (`fees_customer_unavailable` sinon).
+- **`amount_too_low`** : proposez au moins `$e->details['minimumAmount']`.
+
 ## Webhooks
 
 - **Ils peuvent arriver plusieurs fois** : vos fonctions doivent le supporter. Vérifiez l'état en base, ou gardez `$event->id`.
@@ -191,6 +202,9 @@ $handlers = new WebhookHandlers(onCompleted: function (Event $e) use ($pay): voi
 - **`onRefund`** : prévenez le client, par e-mail ou SMS. Technas ne lui écrit pas.
   - `refund.completed` : l'argent est arrivé, `sentAmount` sur son téléphone.
   - `refund.failed` : rien n'est parti et votre solde est recrédité. Proposez un autre moyen, ou refaites le même appel `refund` : il est permis après un échec.
+- **`onSettlement`** : l'issue d'un reversement de votre solde vers votre numéro mobile money ; contenu dans `$e->settlement` (`id`, `amount`, `fee`, `netAmount`, `currency`, `status`, `createdAt`, chacun `null` s'il manque).
+  - `settlement.completed` : `netAmount` est arrivé sur votre numéro. `amount` a quitté le solde, `fee` est le frais du versement, à votre charge.
+  - `settlement.failed` : rien n'est arrivé et `amount` est recrédité sur votre solde.
 
 ## Paiement par carte (`method: 'card'`)
 
@@ -256,7 +270,7 @@ En réel, un compte sans pièce d'identité vérifiée voit ses **nouveaux** pai
 | `invalid_secret` | Variable absente ou mal copiée : demandez à l'utilisateur de la vérifier |
 | `invalid_api_key` | Secret refusé : contacter Technas |
 | `invalid_request` | Corriger le champ indiqué dans `$e->errors` |
-| `invalid_amount`, `amount_too_low` | Montant entier positif, assez grand pour couvrir les frais |
+| `invalid_amount`, `amount_too_low` | Montant entier positif, assez grand pour couvrir les frais ; `amount_too_low` donne `$e->details['minimumAmount']` |
 | `currency_not_enabled` | Devise non ouverte sur ce compte : contacter Technas |
 | `currency_conversion_unavailable` | Client hors zone CFA, mode de change `none` : ne pas proposer ce pays ; voir `getFxMode()` |
 | `country_not_allowed` | Le marchand ne vend pas dans ce pays : ne pas le proposer |

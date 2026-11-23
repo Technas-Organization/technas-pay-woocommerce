@@ -13,6 +13,7 @@ use TechnasPay\Internal\Data;
  * `risk_not_accepted`, `card_account_not_ready`, `insufficient_balance`, `kyc_required`…
  * `kyc_required` (409) : `details['consoleUrl']`, `details['reason']` (`amount` | `duration`) ;
  * `contract_required` (409) : `details['consoleUrl']`, `details['version']`. Ni l'un ni l'autre ne se rejoue.
+ * `amount_too_low` (422) : `details['minimumAmount']`, le plus petit montant possible (minimum du réseau, frais compris).
  * `retryable()` : refaire LE MÊME appel, mêmes valeurs, a du sens.
  * Le message ne cite jamais le secret.
  */
@@ -20,7 +21,7 @@ final class TechnasPayException extends \RuntimeException
 {
     /**
      * @param list<array{field: string, message: string}>|null $errors
-     * @param array{missingAmount?: int|float, currency?: string, refundableAmount?: int|float, reason?: string, risk?: string, accountStatus?: string, consoleUrl?: string, version?: string} $details
+     * @param array{missingAmount?: int|float, currency?: string, refundableAmount?: int|float, reason?: string, risk?: string, accountStatus?: string, consoleUrl?: string, version?: string, minimumAmount?: int|float} $details
      */
     public function __construct(
         public readonly string $errorCode,
@@ -44,7 +45,7 @@ final class TechnasPayException extends \RuntimeException
     {
         $d = Data::asMap($data);
         $details = [];
-        foreach (['missing_amount' => 'missingAmount', 'refundable_amount' => 'refundableAmount'] as $from => $to) {
+        foreach (['missing_amount' => 'missingAmount', 'refundable_amount' => 'refundableAmount', 'minimum_amount' => 'minimumAmount'] as $from => $to) {
             if (($n = Data::nnum($d, $from)) !== null) {
                 $details[$to] = $n;
             }

@@ -48,6 +48,20 @@ final class Payment
         public readonly ?string $cancelReason = null,
         /** Avis `payment.expired` : `canceled` (annulé par vous) ou `timeout` ; `null` sur un ancien avis. */
         public readonly ?string $reason = null,
+        /**
+         * Ce que Technas demande au réseau de paiement, avant ses frais (= `amount`, sauf frais au
+         * client). Serveur ancien : `amount`.
+         */
+        public readonly int|float|null $customerAmount = null,
+        /** Qui a payé les frais : `partner` (vous) ou `customer` (le client). Serveur ancien : `partner`. */
+        public readonly string $feesPaidBy = 'partner',
+        /**
+         * Ce que le client paie, frais du réseau de paiement compris (le plus haut des réseaux tant
+         * qu'il n'a pas choisi le sien). `null` : inconnu (carte, hors franc CFA, serveur ancien).
+         */
+        public readonly int|float|null $customerTotal = null,
+        /** Les frais du réseau de paiement dans `customerTotal` ; `null` : inconnus. */
+        public readonly int|float|null $processingFee = null,
     ) {
     }
 
@@ -77,6 +91,10 @@ final class Payment
             D::nstr($r, 'canceled_at'),
             D::nstr($r, 'cancel_reason'),
             D::nstr($r, 'reason'),
+            D::nnum($r, 'customer_amount') ?? D::num($r, 'amount'),
+            D::str($r, 'fees_paid_by', 'partner'),
+            D::nnum($r, 'customer_total'),
+            D::nnum($r, 'processing_fee'),
         );
     }
 

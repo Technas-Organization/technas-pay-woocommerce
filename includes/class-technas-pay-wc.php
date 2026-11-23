@@ -43,6 +43,9 @@ final class Technas_Pay_WC {
 	 */
 	public const KYC_TRANSIENT = 'technas_pay_kyc';
 
+	/** Devis du total à payer au paiement (`quote`), gardés quelques minutes par montant et pays. */
+	public const QUOTE_TRANSIENT_PREFIX = 'technas_pay_quote_';
+
 	/** Hôtes autorisés pour la page de paiement (redirection du client). */
 	public const CHECKOUT_HOSTS = array( 'pay-api.technas.fr' );
 
@@ -211,12 +214,123 @@ final class Technas_Pay_WC {
 		return rest_url( 'technas-pay/v1/webhook' );
 	}
 
-	/** Le client Technas Pay. Les tests injectent leur transport par le filtre `technas_pay_wc_transport`. */
-	public static function client(): TechnasPay {
+	/**
+	 * Le client Technas Pay. Les tests injectent leur transport par le filtre `technas_pay_wc_transport`.
+	 * `$timeout` (secondes) : un appel fait pendant l'affichage d'une page (devis) n'attend jamais 30 s.
+	 */
+	public static function client( ?int $timeout = null ): TechnasPay {
+		$transport = apply_filters( 'technas_pay_wc_transport', null );
+		if ( $transport === null && $timeout !== null ) {
+			$transport = new \TechnasPay\Http\CurlTransport( $timeout );
+		}
 		return new TechnasPay(
 			self::secret(),
 			(string) apply_filters( 'technas_pay_wc_base_url', TechnasPay::DEFAULT_BASE_URL ),
-			apply_filters( 'technas_pay_wc_transport', null ),
+			$transport,
+		);
+	}
+
+	/**
+	 * Qui paie les frais en mobile money, selon le réglage « Who pays the fees » : `customer` (le
+	 * client paie le total de la commande + les frais ; le marchand reçoit exactement le total),
+	 * `partner` (le client paie le total, frais compris) ou `null` (le réglage du compte Technas Pay).
+	 */
+	public static function fees_paid_by(): ?string {
+		$settings = get_option( self::SETTINGS_OPTION, array() );
+		$fees     = is_array( $settings ) ? ( $settings['fees'] ?? 'account' ) : 'account';
+		return in_array( $fees, array( 'customer', 'partner' ), true ) ? $fees : null;
+	}
+
+	/**
+	 * La ligne montrée au client sous « Mobile money » au paiement : ce qu'il paiera, frais du réseau
+	 * de paiement compris, lu dans le devis de Technas (`quote`). Vide quand le client paie exactement
+	 * le total (frais à la charge du marchand), sans panier, ou si le devis n'a pas pu être lu : le
+	 * paiement n'en dépend jamais. Un devis est gardé 10 minutes par montant, pays et réglage ; un échec,
+	 * 2 minutes (aucune page de paiement ne relance Technas à chaque rafraîchissement).
+	 */
+	public static function checkout_total_line(): string {
+		if ( ! self::is_configured() || ! function_exists( 'WC' ) || ! WC()->cart ) {
+			return '';
+		}
+		$country = WC()->customer ? (string) WC()->customer->get_billing_country() : '';
+		return self::total_line_for( (int) round( (float) WC()->cart->get_total( 'edit' ) ), $country );
+	}
+
+	/** La ligne de `checkout_total_line` pour un montant (F CFA) et le pays de facturation du client. */
+	public static function total_line_for( int $amount, string $country ): string {
+		if ( $amount <= 0 || ! self::is_configured() ) {
+			return '';
+		}
+		$country  = strtoupper( trim( $country ) );
+		$country  = $country !== '' && Status::currencyForCountry( $country ) !== null ? $country : '';
+		$currency = $country === '' ? get_woocommerce_currency() : '';
+		$fees     = self::fees_paid_by();
+		$key      = self::QUOTE_TRANSIENT_PREFIX . md5( implode( '|', array( $amount, $country, $currency, (string) $fees, self::secret_hint() ) ) );
+		$cached   = get_transient( $key );
+		if ( $cached === 'unavailable' ) {
+			return '';
+		}
+		if ( is_array( $cached ) ) {
+			$quote = \TechnasPay\Model\Quote::fromApi( $cached );
+		} else {
+			try {
+				$quote = self::client( 5 )->quote( $amount, country: $country !== '' ? $country : null, fees: $fees, currency: $currency !== '' ? $currency : null );
+			} catch ( \Throwable ) {
+				set_transient( $key, 'unavailable', 2 * MINUTE_IN_SECONDS );
+				return '';
+			}
+			set_transient( $key, self::quote_to_array( $quote ), 10 * MINUTE_IN_SECONDS );
+		}
+		return self::total_line( $quote );
+	}
+
+	/** Le devis sous la forme rendue par l'API, pour le garder dans un transient. */
+	private static function quote_to_array( \TechnasPay\Model\Quote $q ): array {
+		return array(
+			'method'          => $q->method,
+			'currency'        => $q->currency,
+			'country'         => $q->country,
+			'fees_paid_by'    => $q->feesPaidBy,
+			'amount'          => $q->amount,
+			'customer_amount' => $q->customerAmount,
+			'customer_total'  => $q->customerTotal,
+			'processing_fee'  => $q->processingFee,
+			'commission'      => $q->commission,
+			'net_amount'      => $q->netAmount,
+			'networks'        => array_map(
+				static fn ( \TechnasPay\Model\QuoteNetwork $n ): array => array(
+					'network'        => $n->network,
+					'network_name'   => $n->networkName,
+					'customer_total' => $n->customerTotal,
+					'processing_fee' => $n->processingFee,
+					'commission'     => $n->commission,
+					'net_amount'     => $n->netAmount,
+				),
+				$q->networks
+			),
+		);
+	}
+
+	/** « Tu paieras X F CFA » (un seul montant) ou « entre X et Y » (selon l'opérateur) ; vide si rien ne s'ajoute. */
+	public static function total_line( \TechnasPay\Model\Quote $q ): string {
+		$totals = array_map( static fn ( \TechnasPay\Model\QuoteNetwork $n ): int|float => $n->customerTotal, $q->networks );
+		$high   = $totals ? max( $totals ) : $q->customerTotal;
+		$low    = $totals ? min( $totals ) : $q->customerTotal;
+		if ( $high <= $q->amount ) {
+			return '';
+		}
+		if ( (float) $low === (float) $high ) {
+			return sprintf(
+				/* translators: %s: amount in CFA francs */
+				__( 'With mobile money you will pay %s F CFA, payment network fees included.', 'technas-pay-woocommerce' ),
+				number_format_i18n( $high )
+			);
+		}
+		return sprintf(
+			/* translators: 1: lowest amount, 2: highest amount (CFA francs) */
+			__( 'With mobile money you will pay between %1$s and %2$s F CFA depending on your operator, payment network fees included.', 'technas-pay-woocommerce' ),
+			number_format_i18n( $low ),
+			number_format_i18n( $high )
 		);
 	}
 
@@ -259,6 +373,9 @@ final class Technas_Pay_WC {
 		if ( $method === 'card' ) {
 			$input['method']   = 'card';
 			$input['currency'] = $order->get_currency();
+		} elseif ( self::fees_paid_by() !== null ) {
+			// Qui paie les frais : mobile money seulement (par carte, toujours le marchand).
+			$input['fees'] = self::fees_paid_by();
 		}
 		// Mobile money : la boutique vend en F CFA, la devise suit le pays du client (XOF ou XAF, même montant).
 		for ( ; ; $attempt++ ) {

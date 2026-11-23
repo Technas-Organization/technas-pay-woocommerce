@@ -2,7 +2,7 @@
 
 Encaissez le **mobile money** (Orange Money, MTN MoMo, Moov Money, Wave…) et la **carte bancaire** (avec Apple Pay et Google Pay) sur votre boutique WooCommerce. Sans développeur.
 
-**Technas Pay réunit le mobile money et la carte dans un seul outil.** Carte : 1 % (plus les frais de votre compte carte, selon le pays : environ 1,5 % + 0,25 € en Europe). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer. Devises et pays, pièces demandées, versements : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
+**Technas Pay réunit le mobile money et la carte dans un seul outil.** Carte : 1 % (plus les frais de votre compte carte, selon le pays : environ 1,5 % + 0,25 € en Europe). Mobile money : 2 %, et vous choisissez qui paie les frais : le client (vous recevez exactement le total de la commande) ou vous. Sans abonnement, et une clé de test sans papier pour commencer. Devises et pays, pièces demandées, versements : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
 
 ## Installer (5 minutes)
 
@@ -23,6 +23,11 @@ C'est tout. Faites une commande de test : la page de paiement vous propose « r�
 - **Le client revient payer plus tard, ou après avoir modifié sa commande** : depuis sa commande, « Payer » le ramène sur la page déjà ouverte si elle est encore valable. Si le lien a expiré, ou si le total a changé depuis, une nouvelle page est créée au bon montant : il n'est jamais bloqué par un essai qui n'a pas été payé.
 - **Un seul paiement ouvert par commande** : quand le client passe du mobile money à la carte (ou l'inverse), ou que le total a changé, l'ancien lien de paiement est fermé avant que le nouveau soit créé. Une commande ne peut donc pas être payée deux fois. Si l'ancien paiement est déjà en cours chez l'opérateur, ou déjà payé, aucun nouveau paiement n'est créé et le client en est averti.
 - **Payé deux fois ?** Si le client règle deux pages pour une commande déjà payée (l'ancienne après la nouvelle, ou la carte puis le mobile money), ce second paiement n'est jamais ignoré : la commande passe « en attente » avec une note qui demande de le rembourser. Remboursez-le depuis la commande, comme ci-dessous.
+- **Qui paie les frais** (mobile money) : réglage « Qui paie les frais » dans **Mobile money (Technas Pay)** :
+  - **le client** : il paie le total de la commande + les frais du réseau de paiement + la commission Technas ; vous recevez **exactement** le total. Au paiement, sous « Mobile money », il voit ce qu'il paiera (par exemple 214 F CFA pour une commande de 200 F CFA au Togo), lu chez Technas. Si ce montant ne peut pas être lu, rien n'est affiché et le paiement continue normalement ;
+  - **vous** : le client paie le total, frais compris ; vous recevez le reste (par exemple 940 F CFA pour 1 000 F CFA) ;
+  - **réglage du compte Technas Pay** (par défaut).
+  Par carte, les frais sont toujours à votre charge.
 - **Rembourser depuis WooCommerce** : dans la commande, **Rembourser → Rembourser via Technas Pay**, en tout ou en partie. L'argent repart au numéro ou à la carte qui a payé.
 - **Montant vérifié** : si le montant payé ne correspond pas à la commande, elle est mise « en attente » avec une note, au lieu de passer payée.
 - **Seuil d'identité** : avec une clé `tps_live_`, les réglages Mobile money montrent ce que le compte a encaissé, le seuil, l'échéance et le lien vers la console Technas Pay, et une notice prévient l'administrateur quand le seuil approche ou est atteint. Au-delà du seuil (1 000 000 F CFA encaissés en cumul, ou 30 jours après le premier paiement réel, chiffres lus chez Technas), un compte sans pièce d'identité vérifiée voit ses nouveaux paiements mobile money refusés ; la carte n'est pas concernée, rien de ce qui existe n'est bloqué. Le client voit alors un message neutre qui lui propose la carte.

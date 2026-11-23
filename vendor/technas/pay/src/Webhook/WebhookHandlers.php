@@ -31,6 +31,11 @@ final class WebhookHandlers
          * au premier refus.
          */
         public readonly ?\Closure $onKycRequired = null,
+        /**
+         * `settlement.completed`, `settlement.failed` (`$e->settlement`) : issue d'un reversement de
+         * votre solde vers votre numéro mobile money. Sur un échec, la somme est recréditée sur le solde.
+         */
+        public readonly ?\Closure $onSettlement = null,
     ) {
     }
 
@@ -47,6 +52,7 @@ final class WebhookHandlers
             $type === 'fx_mode.updated' => $this->onFxModeUpdated,
             $type === 'card_account.updated' => $this->onCardAccountUpdated,
             $type === 'account.kyc_required' => $this->onKycRequired,
+            $type === 'settlement.completed', $type === 'settlement.failed' => $this->onSettlement,
             // Type inconnu : acquitté sans rien appeler (sinon relivré pendant trois jours).
             default => null,
         };

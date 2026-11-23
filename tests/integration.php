@@ -145,7 +145,7 @@ tp_check(!Technas_Pay_WC::save_secret('pas-une-cle') && Technas_Pay_WC::secret()
 tp_check(Technas_Pay_WC::save_secret('tps_test_pk%41b.ws%42c') && Technas_Pay_WC::secret() === 'tps_test_pk%41b.ws%42c', 'I1 : une clé contenant « %xx » est gardée intacte');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(file_exists(TECHNAS_PAY_WC_DIR . '/uninstall.php') && str_contains((string) file_get_contents(TECHNAS_PAY_WC_DIR . '/uninstall.php'), "delete_option( 'technas_pay_secret' )"), 'F5 : la désinstallation efface la clé');
-tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.4.1', '>='), 'M1 : le SDK embarqué est au moins 0.4.1 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0, identifiants validés avant tout appel en 0.4.1)', TechnasPay\TechnasPay::VERSION);
+tp_check(version_compare(TechnasPay\TechnasPay::VERSION, '0.6.0', '>='), 'M1 : le SDK embarqué est au moins 0.6.0 (durcie en 0.1.1, kind « card » en 0.1.2, seuil d\'identité en 0.2.0, avis complet en 0.2.1, changement d\'offre en 0.3.0, annulation en 0.4.0, identifiants validés avant tout appel en 0.4.1, devis et frais en 0.6.0)', TechnasPay\TechnasPay::VERSION);
 
 // 1. Payer : bon montant, référence de la boutique, devise déduite du pays.
 $order = tp_order();
@@ -520,6 +520,48 @@ tp_check(str_contains($journal, 'kyc_required') && str_contains($journal, $conso
 tp_check(get_transient(Technas_Pay_WC::KYC_TRANSIENT) === false, 'refus kyc_required : l\'état gardé est relu au prochain affichage');
 Technas_Pay_WC::save_secret(TP_SECRET);
 tp_check(get_transient(Technas_Pay_WC::KYC_TRANSIENT) === false && Technas_Pay_WC::account_kyc() === null, 'seuil : nouvelle clé (test), état effacé et plus rien de lu');
+
+// 12 bis. Qui paie les frais : réglage passé en `fees` (mobile money seulement), total à payer montré
+//         au client depuis le devis (`quote`), jamais bloquant.
+$settings = get_option(Technas_Pay_WC::SETTINGS_OPTION);
+tp_check(Technas_Pay_WC::fees_paid_by() === null, 'frais : réglage absent = réglage du compte');
+$of0 = tp_order();
+tp_start($fake, $mm, $of0, 'pay_f0');
+tp_check(!array_key_exists('fees', end($fake->calls)['body']), 'frais : réglage du compte, aucun « fees » envoyé', end($fake->calls)['body']);
+update_option(Technas_Pay_WC::SETTINGS_OPTION, ['fees' => 'customer'] + $settings);
+$of1 = tp_order(200);
+[, , $rf1] = tp_start($fake, $mm, $of1, 'pay_f1', ['amount' => 200, 'customer_amount' => 205, 'customer_total' => 214, 'processing_fee' => 9, 'commission' => 5, 'net_amount' => 200, 'fees_paid_by' => 'customer']);
+tp_check($rf1['result'] === 'success' && (end($fake->calls)['body']['fees'] ?? null) === 'customer', 'frais : « The customer » envoyé en fees = customer', end($fake->calls)['body']);
+$notes_f1 = implode("\n", array_map(fn ($n) => $n->content, wc_get_order_notes(['order_id' => $of1->get_id()])));
+tp_check(str_contains($notes_f1, '214') && str_contains($notes_f1, '200'), 'frais : la note de commande dit ce que le client paie et ce que la boutique reçoit', $notes_f1);
+$of2 = tp_order(12.5, 'technas_pay_card');
+$fake->queue[] = [201, tp_payment(['id' => 'pay_f2', 'reference' => 'wc-' . $of2->get_id() . '-card-1', 'amount' => 12.5, 'currency' => 'EUR', 'method' => 'card'])];
+Technas_Pay_WC::start_payment($of2, 'card', 'https://exemple.test/merci');
+tp_check(!array_key_exists('fees', end($fake->calls)['body']), 'frais : jamais de « fees » par carte (toujours le marchand)', end($fake->calls)['body']);
+$devis = ['method' => 'mobile_money', 'currency' => 'XOF', 'country' => 'TG', 'fees_paid_by' => 'customer', 'amount' => 200, 'customer_amount' => 205,
+    'customer_total' => 214, 'processing_fee' => 9, 'commission' => 5, 'net_amount' => 200,
+    'networks' => [['network' => 'togocel', 'network_name' => 'Mixx by Yas', 'customer_total' => 214, 'processing_fee' => 9, 'commission' => 5, 'net_amount' => 200],
+        ['network' => 'moov_tg', 'network_name' => 'Moov Money', 'customer_total' => 212, 'processing_fee' => 7, 'commission' => 5, 'net_amount' => 200]]];
+$fake->queue[] = [200, $devis];
+$line = Technas_Pay_WC::total_line_for(200, 'tg');
+$sent = end($fake->calls);
+tp_check($sent['path'] === '/v1/quotes' && $sent['body'] === ['amount' => 200, 'country' => 'TG', 'fees' => 'customer'], 'frais : le devis demande le montant, le pays et le réglage', $sent['body']);
+tp_check(str_contains($line, number_format_i18n(212)) && str_contains($line, number_format_i18n(214)), 'frais : le client voit ce qu\'il paiera, selon son opérateur', $line);
+$calls = count($fake->calls);
+tp_check(Technas_Pay_WC::total_line_for(200, 'TG') === $line && count($fake->calls) === $calls, 'frais : devis gardé quelques minutes (pas de second appel)');
+$fake->queue[] = [503, ['code' => 'unavailable', 'message' => 'm']];
+tp_check(Technas_Pay_WC::total_line_for(300, 'TG') === '', 'frais : devis en échec, aucune ligne (le paiement n\'en dépend pas)');
+$calls = count($fake->calls);
+tp_check(Technas_Pay_WC::total_line_for(300, 'TG') === '' && count($fake->calls) === $calls, 'frais : un échec n\'est pas relancé à chaque affichage');
+update_option(Technas_Pay_WC::SETTINGS_OPTION, ['fees' => 'partner'] + $settings);
+$fake->queue[] = [200, ['amount' => 1000, 'customer_total' => 1000, 'processing_fee' => 40, 'commission' => 20, 'net_amount' => 940, 'fees_paid_by' => 'partner', 'currency' => 'XOF', 'networks' => []]];
+tp_check(Technas_Pay_WC::total_line_for(1000, 'TG') === '' && (end($fake->calls)['body']['fees'] ?? null) === 'partner', 'frais : à la charge du marchand, le client paie le total, aucune ligne');
+$calls = count($fake->calls);
+tp_check($mm->get_description() === 'Orange Money, MTN…' && count($fake->calls) === $calls, 'frais : hors de la page de paiement, la description reste celle des réglages, sans appel', $mm->get_description());
+$mo = new MO();
+$mo->import_from_file(TECHNAS_PAY_WC_DIR . '/languages/technas-pay-woocommerce-fr_FR.mo');
+tp_check($mo->translate('Who pays the fees') === 'Qui paie les frais', 'frais : libellé du réglage traduit en français (.mo recompilé)', $mo->translate('Who pays the fees'));
+update_option(Technas_Pay_WC::SETTINGS_OPTION, $settings);
 
 // 13. Préparer l'essai HTTP réel (joué depuis l'hôte par curl, puis vérifié en phase « http »).
 wp_mkdir_p($out_dir);

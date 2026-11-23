@@ -9,6 +9,7 @@ use TechnasPay\Model\CardAccount;
 use TechnasPay\Model\KycRequired;
 use TechnasPay\Model\Payment;
 use TechnasPay\Model\Refund;
+use TechnasPay\Model\Settlement;
 
 /**
  * Un événement vérifié. Selon `type`, un seul champ de contenu est rempli ; `data` garde le brut.
@@ -30,6 +31,8 @@ final class Event
         public readonly ?CardAccount $cardAccount = null,
         /** `account.kyc_required` : seuil d'identité proche ou atteint. */
         public readonly ?KycRequired $kycRequired = null,
+        /** `settlement.completed`, `settlement.failed` : issue d'un reversement de votre solde. */
+        public readonly ?Settlement $settlement = null,
     ) {
     }
 
@@ -55,6 +58,9 @@ final class Event
         }
         if ($t === 'account.kyc_required') {
             return new self(...$base, kycRequired: KycRequired::fromApi($d));
+        }
+        if (in_array($t, ['settlement.completed', 'settlement.failed'], true)) {
+            return new self(...$base, settlement: Settlement::fromApi($d));
         }
         // payout_destination.*, balance.topped_up, balance.converted, fx_mode.updated, types inconnus : `data`.
         return new self(...$base);

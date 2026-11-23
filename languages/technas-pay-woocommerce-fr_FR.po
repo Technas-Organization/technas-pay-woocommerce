@@ -23,8 +23,8 @@ msgstr "Payez par carte, Apple Pay ou Google Pay."
 msgid "Mobile money (Technas Pay)"
 msgstr "Mobile money (Technas Pay)"
 
-msgid "Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment (operator fees are paid by the customer), no subscription."
-msgstr "Orange Money, MTN MoMo, Moov Money, Wave… Le client choisit son pays et son opérateur sur la page Technas Pay. 2 % par paiement réussi (les frais de l'opérateur sont payés par le client), sans abonnement."
+msgid "Orange Money, MTN MoMo, Moov Money, Wave… The customer chooses their country and operator on the Technas Pay page. 2% per successful payment, no subscription. You choose who pays the fees: the customer (you receive exactly the order total) or you."
+msgstr "Orange Money, MTN MoMo, Moov Money, Wave… Le client choisit son pays et son opérateur sur la page Technas Pay. 2 % par paiement réussi, sans abonnement. Vous choisissez qui paie les frais : le client (vous recevez exactement le total de la commande) ou vous."
 
 msgid "Mobile money"
 msgstr "Mobile money"
@@ -211,3 +211,27 @@ msgstr "Ouvrir la console Technas Pay"
 #, php-format
 msgid "Technas Pay: the order is paid, but an earlier attempt at an outdated amount was also paid (%s). Refund it to the customer before shipping."
 msgstr "Technas Pay : la commande est payée, mais un essai précédent, à un ancien montant, a aussi été payé (%s). Remboursez-le au client avant d'expédier."
+
+msgid "Who pays the fees"
+msgstr "Qui paie les frais"
+
+msgid "Technas Pay account setting"
+msgstr "Réglage du compte Technas Pay"
+
+msgid "The customer: you receive exactly the order total"
+msgstr "Le client : vous recevez exactement le total de la commande"
+
+msgid "You: the customer pays the order total, fees included"
+msgstr "Vous : le client paie le total de la commande, frais compris"
+
+msgid "Mobile money only (card payments: always you). When the customer pays the fees, the total to pay is shown under « Mobile money » at checkout."
+msgstr "Mobile money seulement (par carte : toujours vous). Quand le client paie les frais, le total à payer s'affiche sous « Mobile money » au paiement."
+
+msgid "With mobile money you will pay %s F CFA, payment network fees included."
+msgstr "En mobile money, vous paierez %s F CFA, frais du réseau de paiement compris."
+
+msgid "With mobile money you will pay between %1$s and %2$s F CFA depending on your operator, payment network fees included."
+msgstr "En mobile money, vous paierez entre %1$s et %2$s F CFA selon votre opérateur, frais du réseau de paiement compris."
+
+msgid "Technas Pay: the customer pays up to %1$s (payment network fees %2$s); you receive %3$s."
+msgstr "Technas Pay : le client paie au plus %1$s (frais du réseau de paiement %2$s) ; vous recevez %3$s."

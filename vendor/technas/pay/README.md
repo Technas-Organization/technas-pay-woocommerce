@@ -2,7 +2,7 @@
 
 Encaissez des paiements mobile money et par carte via Technas depuis un serveur PHP : Laravel, Symfony, Slim, ou PHP sans framework.
 
-**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais de votre compte carte, selon le pays : environ 1,5 % + 0,25 € en Europe). Mobile money : 2 % (les frais de l'opérateur sont payés par le client). Sans abonnement, et une clé de test sans papier pour commencer.
+**Technas Pay réunit le mobile money et la carte dans un seul SDK, du serveur jusqu'à l'app Flutter.** Carte : 1 % (plus les frais de votre compte carte, selon le pays : environ 1,5 % + 0,25 € en Europe). Mobile money : 2 %, et vous choisissez qui paie les frais : le client (vous recevez exactement votre prix) ou vous (le client paie votre prix) ; `$pay->quote(...)` dit les montants avant le paiement. Sans abonnement, et une clé de test sans papier pour commencer.
 
 Devises et pays, pièces demandées, versements, comparaison avec les autres prestataires : [le hub Technas Pay](https://github.com/Technas-Organization/technas-pay).
 
@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.4.1
+composer require technas/pay:^0.6.0
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -49,6 +49,46 @@ header('Location: ' . $payment->checkoutUrl, true, 303);
 
 Calculez le montant côté serveur. Ne passez pas `currency` si vous vendez en francs CFA : la devise suit le pays du client (`customer.country`), ou le client choisit son pays sur la page. Par carte : `'method' => 'card'`, une `currency` (EUR, XOF…), décimales permises.
 
+### Qui paie les frais, et combien paie le client
+
+Deux modes, en mobile money (franc CFA). Le mode par défaut est celui de votre compte (demandez à Technas de le changer) ; chaque paiement peut le surcharger avec `'fees'`.
+
+| `fees` | Le client paie | Vous recevez |
+|---|---|---|
+| `'customer'` | votre prix + les frais du réseau de paiement + la commission Technas | **exactement votre prix** |
+| `'partner'` | **votre prix**, frais compris | votre prix − les frais |
+
+```php
+$payment = $pay->askForPayment([
+    'amount' => 200,
+    'reference' => Status::retryReference($order->id, $order->attempt),
+    'customer' => ['email' => 'client@exemple.com', 'name' => 'Awa Mensah', 'country' => 'TG'],
+    'returnUrl' => 'https://votre-site.com/merci',
+    'fees' => 'customer', // vous recevez exactement 200
+]);
+```
+
+Pour savoir AVANT de créer le paiement combien le client paiera (le montant à lui afficher) et combien vous recevrez :
+
+```php
+$q = $pay->quote(200, country: 'TG', fees: 'customer');
+$q->customerTotal;   // 214 : ce que le client paie (à afficher)
+$q->processingFee;   // 9   : frais du réseau de paiement
+$q->commission;      // 5   : commission Technas (2 %)
+$q->netAmount;       // 200 : ce que vous recevez
+$q->networks;        // le détail réseau par réseau (Mixx by Yas, Moov Money…), en QuoteNetwork
+
+$p = $pay->quote(1000, country: 'TG', fees: 'partner');
+// $p->customerTotal 1000, $p->processingFee 40, $p->commission 20, $p->netAmount 940
+```
+
+- `$pay->getFees(...)` est le même appel que `$pay->quote(...)`. Rien n'est créé.
+- Un paiement créé ensuite avec le même montant, le même pays et le même `fees` porte les mêmes montants : `$payment->customerTotal`, `$payment->processingFee`, `$payment->netAmount`, `$payment->customerAmount`, `$payment->feesPaidBy`. `$payment->amount` reste votre prix. L'avis `payment.*` porte les mêmes champs (`$event->payment`).
+- Les frais du réseau de paiement suivent la grille du réseau. Le client choisit son réseau sur la page de paiement : `customerTotal` est le plus haut des réseaux possibles, `$q->networks[$i]->customerTotal` le montant exact de chacun.
+- L'opérateur du client (Mixx by Yas, Moov…) peut prendre ses propres frais sur le téléphone, en dehors de Technas : `$q->networks[$i]->operatorFeeEstimate` en donne une estimation quand on la connaît (« environ »), jamais une promesse.
+- Montant trop petit : `amount_too_low` avec `$e->details['minimumAmount']`. Au Togo, le réseau n'accepte rien sous 200 F : en `'partner'`, 209 F au minimum ; en `'customer'`, 200 F passent.
+- Par carte, seulement `'partner'` : ajouter des frais au paiement par carte d'un consommateur est interdit en Europe. `$pay->quote(20, method: 'card', currency: 'EUR')` rend la commission (`netAmount` null : les frais de la carte dépendent de la carte du client).
+
 ## 3. Recevoir l'avis de paiement
 
 Technas signe chaque avis (`X-Technas-Payment-Signature: t=…,s=…`). Le SDK vérifie la signature sur le **corps brut**, puis appelle votre fonction.
@@ -69,7 +109,7 @@ http_response_code($result['status']); // 400 si la signature est refusée
 echo json_encode($result['body']);
 ```
 
-Fonctions disponibles : `onCompleted`, `onFailed` (pas définitif), `onExpired` (définitif), `onRefund`, `onTopUp`, `onPayoutDestination`, `onBalanceConverted`, `onFxModeUpdated`, `onCardAccountUpdated`, `onKycRequired` (seuil d'identité, voir plus bas). Une exception dans votre fonction doit remonter : Technas relivrera. Exemples : [examples/](examples).
+Fonctions disponibles : `onCompleted`, `onFailed` (pas définitif), `onExpired` (définitif), `onRefund`, `onTopUp`, `onPayoutDestination`, `onBalanceConverted`, `onFxModeUpdated`, `onCardAccountUpdated`, `onKycRequired` (seuil d'identité, voir plus bas), `onSettlement` (reversement de votre solde vers votre numéro mobile money : `settlement.completed` ou `settlement.failed`, contenu dans `$e->settlement`). Une exception dans votre fonction doit remonter : Technas relivrera. Exemples : [examples/](examples).
 
 ## 4. Pour une app mobile : les routes toutes faites
 
@@ -98,6 +138,7 @@ Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /p
 | Méthode | Rôle |
 |---|---|
 | `getPayment($id)`, `getPaymentByReference($ref)` | Statut ; rattraper un avis manqué |
+| `quote($amount, country:, fees:, method:, network:, currency:)`, `getFees(...)` | Devis : ce que le client paiera (`customerTotal`), ce que vous recevrez (`netAmount`), réseau par réseau ; rien n'est créé |
 | `cancelPayment($id)` | Annuler un paiement que personne n'a commencé à payer (le client change d'offre) |
 | `listTransactions(limit:, status:, cursor:)` | Historique paginé (`nextCursor`) |
 | `refund($paymentId, amount: ?, fees: 'partner'\|'customer', reference: ?)` | Rembourser au numéro ou à la carte qui a payé |
@@ -129,6 +170,7 @@ try {
 
 - `kyc_required` (409) : seuil d'identité atteint, nouveaux paiements mobile money refusés. `$e->details['consoleUrl']` et `$e->details['reason']` (`amount` ou `duration`). Proposez la carte ou dites au client que le mobile money n'est pas disponible pour le moment ; ne réessayez pas.
 - `contract_required` (409) : un contrat est à accepter dans la console. `$e->details['consoleUrl']` et `$e->details['version']`. Ne réessayez pas.
+- `amount_too_low` (422) : montant trop petit pour couvrir les frais. `$e->details['minimumAmount']` donne le plus petit montant possible.
 
 Codes et conduite à tenir : [AGENTS.md](AGENTS.md#erreurs).
 

@@ -12,6 +12,7 @@ use TechnasPay\Http\Transport;
 use TechnasPay\Model\CardAccount;
 use TechnasPay\Model\CardOnboardingLink;
 use TechnasPay\Model\Payment;
+use TechnasPay\Model\Quote;
 use TechnasPay\Model\Refund;
 use TechnasPay\Model\TopUp;
 use TechnasPay\Webhook\Event;
@@ -27,7 +28,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.4.1';
+    public const VERSION = '0.6.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -172,7 +173,13 @@ final class TechnasPay
      * (`['email' => …, 'name' => …, 'phone' => ?, 'country' => ?]`), `returnUrl`.
      * Facultatifs : `method` (`mobile_money` par défaut, ou `card` qui exige `currency`), `currency`
      * (ne la passez pas en zone franc CFA : elle suit le pays du client), `description`, `metadata`,
-     * `allowedCountries`, `excludedCountries`, `askCountry`.
+     * `allowedCountries`, `excludedCountries`, `askCountry`, `fees`.
+     *
+     * `fees` (mobile money en franc CFA) : qui paie les frais. `customer` : le client paie votre prix
+     * + les frais du réseau de paiement + la commission Technas, vous recevez EXACTEMENT `amount` ;
+     * `partner` : le client paie `amount`, frais compris. Absent : le réglage de votre compte. Les
+     * montants avant de créer le paiement : `quote(...)`. Par carte, seulement `partner`
+     * (`fees_customer_unavailable`).
      *
      * @param array<string, mixed> $input
      */
@@ -191,6 +198,8 @@ final class TechnasPay
         if ($method === 'card' && $currency === '') {
             throw new TechnasPayException('currency_required', 'currency est obligatoire pour un paiement par carte (EUR, XOF…)');
         }
+        $fees = $input['fees'] ?? null;
+        self::checkFees($fees);
         $body = [
             'amount' => $input['amount'],
             'reference' => D::str($input, 'reference'),
@@ -212,7 +221,66 @@ final class TechnasPay
         if (!empty($input['askCountry'])) {
             $body['ask_country'] = true;
         }
+        if ($fees !== null) {
+            $body['fees'] = $fees;
+        }
         return Payment::fromApi($this->callMap('POST', '/v1/payments', $body));
+    }
+
+    /** `fees` : absent, `partner` ou `customer`. */
+    private static function checkFees(mixed $fees): void
+    {
+        if ($fees !== null && $fees !== 'partner' && $fees !== 'customer') {
+            throw new TechnasPayException('invalid_request', 'fees vaut "partner" ou "customer"');
+        }
+    }
+
+    /**
+     * Le devis : pour un montant, ce que le client paiera (`customerTotal`, à lui afficher) et ce que
+     * vous recevrez (`netAmount`), réseau par réseau. Ne crée aucun paiement ; un paiement créé
+     * ensuite avec le même montant, le même pays et le même `fees` porte les mêmes montants.
+     *
+     * ```php
+     * $q = $pay->quote(200, country: 'TG', fees: 'customer');
+     * $q->customerTotal; // 214 : le client paie 214, vous recevez 200
+     * ```
+     *
+     * `$method` : `mobile_money` (défaut) ou `card` ; `$country` : pays du client (sans lui : tous les
+     * pays de la devise) ; `$network` : un réseau précis (`network` d'un devis précédent) ;
+     * `$currency` : sans pays, `XOF` ou `XAF`, obligatoire par carte ; `$fees` : `partner` ou
+     * `customer` (absent : le réglage de votre compte). Montant trop petit : `amount_too_low`, avec
+     * `$e->details['minimumAmount']`.
+     */
+    public function quote(int|float $amount, ?string $country = null, ?string $fees = null, ?string $method = null, ?string $network = null, ?string $currency = null): Quote
+    {
+        if ($method !== null && $method !== 'mobile_money' && $method !== 'card') {
+            throw new TechnasPayException('invalid_request', 'method vaut "mobile_money" ou "card"');
+        }
+        self::positive($amount, $method !== 'card');
+        self::checkFees($fees);
+        $body = ['amount' => $amount];
+        if ($method !== null) {
+            $body['method'] = $method;
+        }
+        if ($country !== null && trim($country) !== '') {
+            $body['country'] = strtoupper(trim($country));
+        }
+        if ($network !== null && $network !== '') {
+            $body['network'] = $network;
+        }
+        if ($currency !== null && trim($currency) !== '') {
+            $body['currency'] = strtoupper(trim($currency));
+        }
+        if ($fees !== null) {
+            $body['fees'] = $fees;
+        }
+        return Quote::fromApi($this->callMap('POST', '/v1/quotes', $body));
+    }
+
+    /** Même chose que `quote` : combien le client paiera, combien vous recevrez. */
+    public function getFees(int|float $amount, ?string $country = null, ?string $fees = null, ?string $method = null, ?string $network = null, ?string $currency = null): Quote
+    {
+        return $this->quote($amount, $country, $fees, $method, $network, $currency);
     }
 
     public function getPayment(string $id): Payment
