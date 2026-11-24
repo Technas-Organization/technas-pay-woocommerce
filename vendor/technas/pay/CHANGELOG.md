@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.0 — 2026-11-24
+
+Un prix affiché fixe, et la grille des frais :
+- `$pay->displayPrice(1000, country: ?, countries: ?, currency: ?, roundTo: ?)` (ou `getDisplayPrice`, `POST /v1/display-price`) : le plus petit prix rond qui vous laisse au moins `receive` sur chaque réseau → `DisplayPrice` : `byCountry` (un prix par pays, `DisplayPriceForCountry`), `everywhere` (un prix valable partout, `null` si XOF et XAF sont mélangés), `worstNetwork`, `netByNetwork` (`DisplayPriceNetwork`). Le paiement se crée ensuite en `'fees' => 'partner'` ;
+- `$pay->getRates(?string $country)` (ou `rates`, `GET /v1/rates`) → `Rates` : par pays (`RateCountry`, commission Technas) et par réseau (`RateNetwork`) : pourcentage, paliers (`FeeTier`), minimum, estimation des frais de l'opérateur, exemple à 1 000 dans chaque mode (`example1000['customer']`, `example1000['partner']`, `RateExample`) ;
+- Installation : `composer require technas/pay:^0.8.0`.
+
 ## 0.7.0 — 2026-11-23
 
 Les moyens et les réseaux, en listes fermées :

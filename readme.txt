@@ -4,7 +4,7 @@ Tags: mobile money, orange money, mtn momo, wave, payments
 Requires at least: 6.3
 Tested up to: 6.7
 Requires PHP: 8.1
-Stable tag: 0.6.0
+Stable tag: 0.7.0
 License: MIT
 License URI: https://opensource.org/licenses/MIT
 
@@ -32,6 +32,9 @@ Mobile money requires a store currency in CFA francs (XOF or XAF). Cards require
 3. Enable "Mobile money" and, if you have a card account, "Card".
 
 == Changelog ==
+
+= 0.7.0 =
+* Technas Pay PHP SDK 0.8.0 (fixed display price for an amount to receive, and the fee grid by country and network). No change to the checkout or the settings.
 
 = 0.6.0 =
 * New "Networks offered" setting in Mobile money (Technas Pay): pick the networks your customers can pay with (empty: every network enabled on your Technas Pay account), and "Network order" for their order on the payment page. Sent with each mobile money payment; card payments are never affected.

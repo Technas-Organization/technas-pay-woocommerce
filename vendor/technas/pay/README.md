@@ -18,7 +18,7 @@ PHP 8.1 ou plus récent, extension `curl`. Aucune autre dépendance.
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.7.0
+composer require technas/pay:^0.8.0
 ```
 
 Technas vous remet **un secret**. Mettez-le dans les variables d'environnement du serveur :
@@ -88,6 +88,48 @@ $p = $pay->quote(1000, country: 'TG', fees: 'partner');
 - L'opérateur du client (Mixx by Yas, Moov…) peut prendre ses propres frais sur le téléphone, en dehors de Technas : `$q->networks[$i]->operatorFeeEstimate` en donne une estimation quand on la connaît (« environ »), jamais une promesse.
 - Montant trop petit : `amount_too_low` avec `$e->details['minimumAmount']`. Au Togo, le réseau n'accepte rien sous 200 F : en `'partner'`, 209 F au minimum ; en `'customer'`, 200 F passent.
 - Par carte, seulement `'partner'` : ajouter des frais au paiement par carte d'un consommateur est interdit en Europe. `$pay->quote(20, method: 'card', currency: 'EUR')` rend la commission (`netAmount` null : les frais de la carte dépendent de la carte du client).
+
+### Un prix affiché fixe, le même pour tous les clients
+
+Vous voulez recevoir 1 000 F et toujours afficher le même prix rond, quel que soit l'opérateur du client ? Demandez ce prix, puis créez le paiement en **`'fees' => 'partner'`** :
+
+```php
+$d = $pay->displayPrice(1000, countries: ['TG', 'BJ'], roundTo: 50);
+$d->byCountry['TG']->price;          // le prix à afficher au Togo
+$d->byCountry['BJ']->price;          // au Bénin
+$d->everywhere?->price;              // un seul prix valable dans les deux pays
+$d->byCountry['TG']->worstNetwork;   // le réseau qui vous laisse le moins (au moins 1 000)
+
+$pay->askForPayment([
+    'amount' => $d->byCountry['TG']->price, // le client paie EXACTEMENT ce prix
+    'fees' => 'partner',                    // pas 'customer' !
+    'currency' => 'XOF',
+    'reference' => 'commande-42',
+    'returnUrl' => 'https://boutique.example/merci',
+    'customer' => ['email' => 'awa@example.com', 'name' => 'Awa', 'country' => 'TG'],
+]);
+```
+
+- Le prix est le plus petit multiple de `roundTo` (50 par défaut) qui vous laisse au moins `receive` sur **chaque** réseau ouvert du pays. Ce qui dépasse vous reste.
+- ⚠️ Avec `'fees' => 'customer'`, le client paierait votre prix **plus** les frais : un prix fixe se paie toujours en `'partner'`.
+- `everywhere` est `null` si vous mélangez des pays en XOF et en XAF (deux monnaies, deux prix).
+- Les frais propres de l'opérateur du client (prélevés sur son téléphone, hors Technas) ne sont pas comptés.
+- `$pay->getDisplayPrice(...)` est le même appel.
+
+### La grille des frais, pays par pays
+
+Pour votre back-office : par pays ouvert et par réseau, le pourcentage, le minimum, la commission Technas, l'estimation des frais de l'opérateur et un exemple à 1 000 F dans chaque mode.
+
+```php
+$g = $pay->getRates();               // ou $pay->getRates('TG'), ou $pay->rates()
+foreach ($g->countries as $c) {
+    foreach ($c->networks as $n) {
+        echo $c->country, ' ', $n->networkName, ' ', $n->percent, ' % min ', $n->minimumAmount,
+            ' client paie ', $n->example1000['customer']?->customerTotal,
+            ' vous recevez (partner) ', $n->example1000['partner']?->netAmount, "\n";
+    }
+}
+```
 
 ### Les moyens et les réseaux : à vous de choisir
 
@@ -164,6 +206,8 @@ Routes : `GET /methods?orderId=`, `POST /payments` `{orderId, method?}`, `GET /p
 |---|---|
 | `getPayment($id)`, `getPaymentByReference($ref)` | Statut ; rattraper un avis manqué |
 | `quote($amount, country:, fees:, method:, network:, currency:)`, `getFees(...)` | Devis : ce que le client paiera (`customerTotal`), ce que vous recevrez (`netAmount`), réseau par réseau ; rien n'est créé |
+| `displayPrice($receive, country:, countries:, currency:, roundTo:)`, `getDisplayPrice(...)` | Prix affiché fixe pour recevoir au moins `$receive` : un prix par pays, un prix partout ; à payer en `'fees' => 'partner'` |
+| `getRates($country)`, `rates($country)` | Grille des frais par pays et par réseau |
 | `getPaymentMethods($country)`, `setPaymentMethods([...])` | Moyens et réseaux ouverts, activés, et leur ordre ; `Network::ALL`, `PaymentMethod::ALL` |
 | `cancelPayment($id)` | Annuler un paiement que personne n'a commencé à payer (le client change d'offre) |
 | `listTransactions(limit:, status:, cursor:)` | Historique paginé (`nextCursor`) |

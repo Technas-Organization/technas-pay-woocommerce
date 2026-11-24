@@ -650,4 +650,75 @@ final class ClientTest extends TestCase
             self::assertSame(['network_not_enabled', 422, false], [$e->errorCode, $e->status, $e->retryable()]);
         }
     }
+
+    public function testPrixAfficheFixeDisplayPriceEnvoieReceivePaysEtPasEtLitUnPrixParPaysEtPartout(): void
+    {
+        $ligne = static fn (string $pays, string $reseau, int $net): array => ['country' => $pays, 'network' => $reseau, 'network_name' => $reseau,
+            'customer_total' => 1100, 'processing_fee' => 44, 'commission' => 22, 'net_amount' => $net, 'operator_fee_estimate' => null];
+        $tg = ['price' => 1100, 'worst_network' => $ligne('TG', 'mixx', 1034), 'net_by_network' => [$ligne('TG', 'mixx', 1034)], 'currency' => 'XOF'];
+        $bj = ['price' => 1150, 'worst_network' => $ligne('BJ', 'mtn_momo', 1010), 'net_by_network' => [$ligne('BJ', 'mtn_momo', 1010)], 'currency' => 'XOF'];
+        $reponse = $bj + ['fees_paid_by' => 'partner', 'receive' => 1000, 'round_to' => 50, 'countries' => ['TG', 'BJ'],
+            'by_country' => ['TG' => $tg, 'BJ' => $bj], 'everywhere' => $bj, 'how_to_use' => 'x', 'operator_fee_note' => 'y'];
+        $mixte = ['price' => 1100, 'currency' => 'XOF', 'fees_paid_by' => 'partner', 'receive' => 1000, 'round_to' => 50,
+            'countries' => ['TG', 'CM'], 'by_country' => ['TG' => $tg], 'everywhere' => null];
+        $t = new FakeTransport([['status' => 200, 'body' => $reponse], ['status' => 200, 'body' => $reponse], ['status' => 200, 'body' => $mixte]]);
+        $pay = $this->pay($t);
+
+        $d = $pay->displayPrice(1000, countries: ['tg', ' BJ'], roundTo: 50);
+        self::assertSame(['POST', 'https://gw.test/v1/display-price'], [$t->calls[0]['method'], $t->calls[0]['url']]);
+        self::assertSame(['receive' => 1000, 'countries' => ['TG', 'BJ'], 'round_to' => 50], $t->jsonBody(0));
+        self::assertNotNull($d->everywhere);
+        self::assertSame([1150, 'partner', 1100, 1150, 1150, 1000, 50, ['TG', 'BJ']],
+            [$d->price, $d->feesPaidBy, $d->byCountry['TG']->price, $d->byCountry['BJ']->price, $d->everywhere->price, $d->receive, $d->roundTo, $d->countries]);
+        $w = $d->worstNetwork;
+        self::assertNotNull($w);
+        self::assertSame(['BJ', 'mtn_momo', 'mtn_momo', 1100, 44, 22, 1010, null],
+            [$w->country, $w->network, $w->networkName, $w->customerTotal, $w->processingFee, $w->commission, $w->netAmount, $w->operatorFeeEstimate]);
+        self::assertCount(1, $d->byCountry['TG']->netByNetwork);
+        self::assertSame(1034, $d->byCountry['TG']->worstNetwork?->netAmount);
+
+        $pay->getDisplayPrice(1000, country: 'TG');
+        self::assertSame(['receive' => 1000, 'country' => 'TG'], $t->jsonBody(1));
+
+        $m = $pay->displayPrice(1000, countries: ['TG', 'CM']);
+        self::assertSame([null, null, []], [$m->everywhere, $m->worstNetwork, $m->netByNetwork]); // XOF et XAF mélangés
+
+        foreach ([fn () => $pay->displayPrice(0), fn () => $pay->displayPrice(-5, country: 'TG'), fn () => $pay->displayPrice(1000, countries: ['a' => 'TG'])] as $mauvais) {
+            try {
+                $mauvais();
+                self::fail('attendu un refus avant tout appel');
+            } catch (TechnasPayException $e) {
+                self::assertSame(0, $e->status);
+            }
+        }
+        self::assertCount(3, $t->calls);
+    }
+
+    public function testGrilleDesFraisGetRatesEtRatesLisentPaysReseauxCommissionEtExemples(): void
+    {
+        $grille = ['fees_paid_by' => 'customer', 'countries' => [['country' => 'TG', 'currency' => 'XOF', 'commission' => ['percent' => 2, 'fixed' => 0],
+            'networks' => [['network' => 'mixx', 'network_name' => 'Mixx by Yas', 'percent' => 4.1, 'fixed' => 0,
+                'fee_tiers' => [['min_amount' => 200, 'max_amount' => 100000000, 'percent' => 4.1, 'fixed' => 0], ['min_amount' => 100000001, 'max_amount' => null, 'percent' => 3, 'fixed' => 0]],
+                'minimum_amount' => 200, 'operator_fee_estimate' => 10, 'example_1000' => [
+                    'customer' => ['customer_total' => 1064, 'processing_fee' => 44, 'commission' => 20, 'net_amount' => 1000],
+                    'partner' => ['customer_total' => 1000, 'processing_fee' => 40, 'commission' => 20, 'net_amount' => 940]]]]]], 'note' => 'x'];
+        $t = new FakeTransport([['status' => 200, 'body' => $grille], ['status' => 200, 'body' => $grille], ['status' => 200, 'body' => []]]);
+        $pay = $this->pay($t);
+        $g = $pay->getRates(' tg');
+        self::assertSame(['GET', 'https://gw.test/v1/rates?country=TG'], [$t->calls[0]['method'], $t->calls[0]['url']]);
+        $mixx = $g->countries[0]->networks[0];
+        self::assertSame(['customer', 'TG', 'XOF', ['percent' => 2, 'fixed' => 0], 'mixx', 'Mixx by Yas', 4.1, 200, 10],
+            [$g->feesPaidBy, $g->countries[0]->country, $g->countries[0]->currency, $g->countries[0]->commission, $mixx->network, $mixx->networkName, $mixx->percent, $mixx->minimumAmount, $mixx->operatorFeeEstimate]);
+        $partner = $mixx->example1000['partner'];
+        self::assertNotNull($partner);
+        self::assertSame([1000, 40, 20, 940], [$partner->customerTotal, $partner->processingFee, $partner->commission, $partner->netAmount]);
+        self::assertSame(1064, $mixx->example1000['customer']?->customerTotal);
+        self::assertSame([200, 100000000, 4.1, 0], [$mixx->feeTiers[0]->minAmount, $mixx->feeTiers[0]->maxAmount, $mixx->feeTiers[0]->percent, $mixx->feeTiers[0]->fixed]);
+        self::assertNull($mixx->feeTiers[1]->maxAmount);
+
+        $pay->rates();
+        self::assertSame('https://gw.test/v1/rates', $t->calls[1]['url']);
+        $vide = $pay->getRates();
+        self::assertSame(['partner', []], [$vide->feesPaidBy, $vide->countries]);
+    }
 }

@@ -11,9 +11,11 @@ use TechnasPay\Internal\Data as D;
 use TechnasPay\Http\Transport;
 use TechnasPay\Model\CardAccount;
 use TechnasPay\Model\CardOnboardingLink;
+use TechnasPay\Model\DisplayPrice;
 use TechnasPay\Model\Payment;
 use TechnasPay\Model\PaymentMethods;
 use TechnasPay\Model\Quote;
+use TechnasPay\Model\Rates;
 use TechnasPay\Model\Refund;
 use TechnasPay\Model\TopUp;
 use TechnasPay\Webhook\Event;
@@ -29,7 +31,7 @@ use TechnasPay\Webhook\WebhookHandlers;
  */
 final class TechnasPay
 {
-    public const VERSION = '0.7.0';
+    public const VERSION = '0.8.0';
     public const DEFAULT_BASE_URL = 'https://pay-api.technas.fr';
     public const SECRET_ENV = 'TECHNAS_PAY_SECRET';
 
@@ -365,6 +367,75 @@ final class TechnasPay
     public function getFees(int|float $amount, ?string $country = null, ?string $fees = null, ?string $method = null, ?string $network = null, ?string $currency = null): Quote
     {
         return $this->quote($amount, $country, $fees, $method, $network, $currency);
+    }
+
+    /**
+     * Le prix affiché FIXE : le plus petit prix rond qui vous laisse au moins `$receive`, quel que
+     * soit le réseau du client. Créez ensuite le paiement avec ce prix et `'fees' => 'partner'`
+     * (jamais `'customer'` : le client paierait le prix PLUS les frais). `everywhere` est `null` si
+     * des pays en XOF et en XAF sont mélangés. Les frais propres de l'opérateur du client (prélevés
+     * sur son téléphone, hors Technas) ne sont pas comptés.
+     *
+     * ```php
+     * $d = $pay->displayPrice(1000, countries: ['TG', 'BJ'], roundTo: 50);
+     * $d->byCountry['TG']->price; // le prix à afficher au Togo
+     * $d->everywhere?->price;     // un seul prix valable dans les deux pays
+     * $pay->askForPayment(['amount' => $d->byCountry['TG']->price, 'fees' => 'partner', ...]);
+     * ```
+     *
+     * `$country` : un pays ; `$countries` : plusieurs (un prix par pays, et un prix partout) ;
+     * `$currency` : sans pays, `XOF` (défaut) ou `XAF` ; `$roundTo` : le pas d'arrondi (défaut 50).
+     *
+     * @param array<mixed>|null $countries une liste de pays (ISO), vérifiée avant tout appel
+     */
+    public function displayPrice(int $receive, ?string $country = null, ?array $countries = null, ?string $currency = null, ?int $roundTo = null): DisplayPrice
+    {
+        if ($receive <= 0) {
+            throw new TechnasPayException('invalid_amount', 'receive doit être un entier positif (1000 = 1 000 FCFA)');
+        }
+        if ($countries !== null && (!array_is_list($countries) || array_filter($countries, static fn (mixed $c): bool => !is_string($c)) !== [])) {
+            throw new TechnasPayException('invalid_request', 'countries est une liste de pays (ex. ["TG", "BJ"])');
+        }
+        $body = ['receive' => $receive];
+        if ($country !== null && trim($country) !== '') {
+            $body['country'] = strtoupper(trim($country));
+        }
+        if ($countries !== null && $countries !== []) {
+            $body['countries'] = array_map(static fn (mixed $c): string => strtoupper(trim(is_string($c) ? $c : '')), $countries);
+        }
+        if ($currency !== null && trim($currency) !== '') {
+            $body['currency'] = strtoupper(trim($currency));
+        }
+        if ($roundTo !== null && $roundTo > 0) {
+            $body['round_to'] = $roundTo;
+        }
+        return DisplayPrice::fromApi($this->callMap('POST', '/v1/display-price', $body));
+    }
+
+    /**
+     * Même chose que `displayPrice`.
+     *
+     * @param array<mixed>|null $countries
+     */
+    public function getDisplayPrice(int $receive, ?string $country = null, ?array $countries = null, ?string $currency = null, ?int $roundTo = null): DisplayPrice
+    {
+        return $this->displayPrice($receive, $country, $countries, $currency, $roundTo);
+    }
+
+    /**
+     * La grille des frais, par pays ouvert et par réseau : pourcentage, paliers, minimum, commission
+     * Technas, estimation des frais de l'opérateur, et un exemple à 1 000 dans chaque mode.
+     */
+    public function getRates(?string $country = null): Rates
+    {
+        $country = strtoupper(trim((string) $country));
+        return Rates::fromApi($this->callMap('GET', '/v1/rates' . ($country === '' ? '' : '?' . http_build_query(['country' => $country]))));
+    }
+
+    /** Même chose que `getRates`. */
+    public function rates(?string $country = null): Rates
+    {
+        return $this->getRates($country);
     }
 
     public function getPayment(string $id): Payment

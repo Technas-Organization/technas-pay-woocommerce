@@ -15,7 +15,7 @@ Même API, mêmes règles que les SDK Node (`@technas/pay`), Python et Dart : m�
 
 ```bash
 composer config repositories.technas-pay vcs https://github.com/Technas-Organization/technas-pay-php
-composer require technas/pay:^0.7.0
+composer require technas/pay:^0.8.0
 ```
 
 ## Quelle méthode pour quoi
@@ -24,6 +24,8 @@ composer require technas/pay:^0.7.0
 |---|---|
 | Faire payer une commande | `$pay->askForPayment(['amount' => 5000, 'reference' => Status::retryReference($orderId, $attempt), 'customer' => ['email' => …, 'name' => …], 'returnUrl' => …])`, puis rediriger (303) vers `$payment->checkoutUrl` |
 | Savoir combien le client paiera et combien vous recevrez, avant de créer le paiement | `$pay->quote(200, country: 'TG', fees: ?)` (ou `$pay->getFees`) → `customerTotal` (à afficher au client), `processingFee`, `commission`, `netAmount`, `networks` (`QuoteNetwork`) |
+| Afficher un prix FIXE (le même quel que soit le réseau) et recevoir au moins X | `$pay->displayPrice(1000, countries: ['TG', 'BJ'], roundTo: 50)` → `byCountry['TG']->price`, `everywhere?->price` ; puis `askForPayment(['amount' => $price, 'fees' => 'partner', …])` (jamais `'customer'`) |
+| La grille des frais par pays et réseau (back-office) | `$pay->getRates('TG')` (ou `$pay->rates`) → `countries[$i]->networks` : `percent`, `minimumAmount`, `operatorFeeEstimate`, `example1000['customer'\|'partner']` ; `countries[$i]->commission` |
 | Faire payer TOUS les frais au client (vous recevez exactement `amount`) | `'fees' => 'customer'` dans `askForPayment` (ou réglage du compte) ; `'partner'` : le client paie `amount`, frais compris |
 | Lister les moyens et réseaux ouverts, ce qui est activé, l'ordre | `$pay->getPaymentMethods('TG')` ; constantes `PaymentMethod::ALL`, `Network::ALL` (`Network::MIXX`, `Network::MOOV`…) |
 | Activer / éteindre des moyens et réseaux, fixer l'ordre d'affichage | `$pay->setPaymentMethods(['methods' => ?, 'networks' => ?, 'networkOrder' => ?])` ; par paiement : `'networks' => [Network::MIXX]` dans `askForPayment` |
